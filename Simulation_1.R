@@ -30,7 +30,7 @@ phoneme_full = rbind(phoneme$learn$data, phoneme$test$data)
 phoneme$learn
 
 # Obtaining response
-phoneme_resp = as.factor(c(phoneme$classlearn, phoneme$classtest))
+phoneme_resp = as.factor(ifelse(c(phoneme$classlearn, phoneme$classtest) %in% c(1, 2, 3), 0, 1))
 
 # define the time points on which the functional predictor is observed. 
 timepts = seq(1, 150, 1)
@@ -44,11 +44,13 @@ phoneme_fd =  Data2fd(timepts, t(phoneme_full), spline_basis)
 phoneme_deriv1 = deriv.fd(phoneme_fd)
 phoneme_deriv2 = deriv.fd(phoneme_deriv1)
 
+plot(phoneme_fd)
+
 # Testing with bike data
 func_cov_1 = phoneme_fd$coefs
 func_cov_2 = phoneme_deriv1$coefs
 func_cov_3 = phoneme_deriv2$coefs
-phoneme_data = array(dim = c(nbasis, nrow(phoneme_full), 3))
+phoneme_data = array(dim = c(nbasis, nrow(phoneme_full), 1))
 phoneme_data[,,1] = func_cov_1
 phoneme_data[,,2] = func_cov_2
 phoneme_data[,,3] = func_cov_3
@@ -61,23 +63,23 @@ train_y = phoneme_resp[ind]
 test_y = phoneme_resp[-ind]
 
 # Setting up for FNN
-phoneme_data_train = array(dim = c(nbasis, length(ind), 3))
-phoneme_data_test = array(dim = c(nbasis, nrow(phoneme_full) - length(ind), 3))
-phoneme_data_train = phoneme_data[, ind, ]
-phoneme_data_test = phoneme_data[, -ind, ]
+phoneme_data_train = array(dim = c(nbasis, length(ind), 1))
+phoneme_data_test = array(dim = c(nbasis, nrow(phoneme_full) - length(ind), 1))
+phoneme_data_train[,,1] = phoneme_data[, ind, ]
+phoneme_data_test[,,1] = phoneme_data[, -ind, ]
 
 # Running FNN for bike
 phoneme_example <- fnn.fit(resp = train_y, 
                             func_cov = phoneme_data_train, 
                             scalar_cov = NULL,
-                            basis_choice = c("bspline"), 
-                            num_basis = c(7),
-                            hidden_layers = 5,
-                            neurons_per_layer = c(64, 64, 64, 64, 64),
-                            activations_in_layers = c("sigmoid", "sigmoid", "sigmoid", "sigmoid", "sigmoid"),
-                            domain_range = list(c(1, 150)),
+                            basis_choice = c("fourier"), 
+                            num_basis = c(3),
+                            hidden_layers = 4,
+                            neurons_per_layer = c(128, 128, 64, 64),
+                            activations_in_layers = c("sigmoid", "sigmoid", "relu", "relu"),
+                            domain_range = list(c(0, 1)),
                             epochs = 300,
-                            learn_rate = 0.00001,
+                            learn_rate = 0.00005,
                             early_stopping = T,
                             dropout = T)
 
@@ -85,9 +87,9 @@ phoneme_example <- fnn.fit(resp = train_y,
 phoneme_pred = fnn.predict(phoneme_example,
                             phoneme_data_test, 
                             scalar_cov = NULL,
-                            basis_choice = c("bspline"), 
-                            num_basis = c(7),
-                            domain_range = list(c(1, 150)))
+                            basis_choice = c("fourier"), 
+                            num_basis = c(3),
+                            domain_range = list(c(0, 1)))
 
 # Rounding predictions (they are probabilities)
 rounded_preds = as.factor(apply(phoneme_pred, 1, function(x){return(which.max(x) - 1)}))
