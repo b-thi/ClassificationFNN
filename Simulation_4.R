@@ -1,5 +1,5 @@
 # Libraries
-library(FNN)
+library(FuncNN)
 library(fda)
 library(keras)
 library(ggplot2)
@@ -44,11 +44,16 @@ obs = 111
 wine_resp = as.factor(wine_ds[1:obs,1] - 1)
 
 # define the time points on which the functional predictor is observed. 
-pixels = seq(0, 1, length.out = 234)
+pixels = seq(1, 234, 1)
 
 # define the fourier basis 
 nbasis = 31
-spline_basis = create.fourier.basis(c(0, 1), nbasis)
+spline_basis = create.fourier.basis(c(1, 234), nbasis)
+
+# Scaling data
+#wine_ds = scale(wine_ds[1:obs, -1])
+#wine_ds = range01(wine_ds[1:obs, -1])
+#wine_ds = apply(wine_ds[1:obs, -1], 2, range01)
 
 # convert the functional predictor into a fda object
 wine_fd =  Data2fd(pixels, t(wine_ds[1:obs, -1]), spline_basis)
@@ -84,27 +89,40 @@ wine_data_test = wine_data[, -ind, ]
 wine_example <- fnn.fit(resp = train_y, 
                         func_cov = wine_data_train, 
                         scalar_cov = NULL,
-                        basis_choice = c("fourier"), 
-                        num_basis = c(9),
-                        hidden_layers = 4,
-                        neurons_per_layer = c(64, 64, 64, 64),
-                        activations_in_layers = c("relu", "relu", "relu", "linear"),
-                        domain_range = list(c(0, 1)),
+                        basis_choice = c("fourier", "fourier", "fourier"), 
+                        num_basis = c(5, 7, 9),
+                        hidden_layers = 3,
+                        neurons_per_layer = c(128, 128, 32),
+                        activations_in_layers = c("relu", "relu", "relu"),
+                        domain_range = list(c(1, 234), c(1, 234), c(1, 234)),
                         epochs = 300,
-                        learn_rate = 0.01,
-                        early_stopping = F,
+                        learn_rate = 0.001,
+                        early_stopping = T,
                         dropout = T)
 
 # Predicting
 wine_pred = fnn.predict(wine_example,
                         wine_data_test, 
                         scalar_cov = NULL,
-                        basis_choice = c("fourier"), 
-                        num_basis = c(9),
-                        domain_range = list(c(0, 1)))
+                        basis_choice = c("fourier", "fourier", "fourier"), 
+                        num_basis = c(5, 7, 9),
+                        domain_range = list(c(1, 234), c(1, 234), c(1, 234)))
 
 # Rounding predictions (they are probabilities)
 rounded_preds = as.factor(apply(wine_pred, 1, function(x){return(which.max(x) - 1)}))
 
 # Confusion matrix
 caret::confusionMatrix(as.factor(rounded_preds), as.factor(test_y))
+
+# Comparing with regression model
+wine_full = data.frame(rbind(wine_train, wine_test))
+wine_full$resp = wine_resp
+wine_MV_train = wine_full[ind,]
+wine_MV_test = wine_full[-ind,]
+
+# Running regression
+fit_rf = randomForest::randomForest(resp ~ ., data = wine_MV_train)
+rf_pred = predict(fit_rf, newdata = wine_MV_test, type = "response")
+
+# Confusion matrix
+caret::confusionMatrix(rf_pred, as.factor(test_y))

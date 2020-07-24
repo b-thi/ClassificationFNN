@@ -1,5 +1,5 @@
 # Libraries
-library(FNN)
+library(FuncNN)
 library(fda)
 library(keras)
 library(ggplot2)
@@ -83,14 +83,13 @@ yoga_example <- fnn.fit(resp = train_y,
                          scalar_cov = NULL,
                          basis_choice = c("fourier"), 
                          num_basis = c(3),
-                         hidden_layers = 4,
-                         neurons_per_layer = c(64, 64, 64, 64),
-                         activations_in_layers = c("relu", "relu", "relu", "linear"),
+                         hidden_layers = 3,
+                         neurons_per_layer = c(64, 64, 64),
+                         activations_in_layers = c("relu", "relu", "relu"),
                          domain_range = list(c(1, 426)),
                          epochs = 300,
                          learn_rate = 0.0001,
-                         early_stopping = T,
-                         dropout = T)
+                         early_stopping = T)
 
 # Predicting
 yoga_pred = fnn.predict(yoga_example,
@@ -105,3 +104,4 @@ rounded_preds = as.factor(apply(yoga_pred, 1, function(x){return(which.max(x) - 
 
 # Confusion matrix
 caret::confusionMatrix(as.factor(rounded_preds), as.factor(test_y))
+

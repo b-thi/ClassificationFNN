@@ -1,5 +1,5 @@
 # Libraries
-library(FNN)
+library(FuncNN)
 library(fda)
 library(keras)
 library(ggplot2)

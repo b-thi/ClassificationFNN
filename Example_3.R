@@ -7,7 +7,7 @@
 #################################
 
 # Libraries
-library(FNN)
+library(FuncNN)
 library(fda)
 library(keras)
 library(ggplot2)
@@ -81,7 +81,7 @@ gasoline_example <- fnn.fit(resp = train_y,
                             activations_in_layers = c("relu", "sigmoid"),
                             domain_range = list(c(900, 1700), c(900, 1700), c(900, 1700)),
                             epochs = 250,
-                            learn_rate = 0.000325,
+                            learn_rate = 0.00325,
                             early_stopping = T,
                             dropout = T)
 
@@ -89,9 +89,9 @@ gasoline_example <- fnn.fit(resp = train_y,
 gasoline_pred = fnn.predict(gasoline_example,
                             gasoline_data_test, 
                             scalar_cov = NULL,
-                            basis_choice = c("bspline"), 
+                            basis_choice = c("bspline", "bspline", "bspline"), 
                             num_basis = c(5, 7, 9),
-                            domain_range = list(c(900, 1700)))
+                            domain_range = list(c(900, 1700), c(900, 1700), c(900, 1700)))
 
 # Rounding predictions (they are probabilities)
 rounded_preds = ifelse(round(gasoline_pred)[,2] == 1, 1, 0)
