@@ -1,109 +1,6 @@
 #################################
 # FNNs Classification Paper     #
 #                               #
-# Example 2 code for JSS paper  #
-#                               #
-# Barinder Thind, Jiguo Cao     #
-#################################
-
-# Libraries
-library(FuncNN)
-library(fda)
-library(keras)
-library(ggplot2)
-library(refund)
-library(modEvA)
-
-# Clearing backend
-K <- backend()
-K$clear_session()
-options(warn=-1)
-
-# Setting seeds
-set.seed(1)
-use_session_with_seed(
-  1,
-  disable_gpu = F,
-  disable_parallel_cpu = F,
-  quiet = T
-)
-
-# Loading data
-load("OJ.RData")
-
-# Combining data
-OJ$full_resp = c(OJ$y.learning, OJ$y.test)
-OJ$full_df = rbind(OJ$x.learning, OJ$x.test)
-
-# Making classification bins
-OJ_resp = as.factor(ifelse(OJ$full_resp > 40, 1, 0))
-#table(OJ_resp)
-
-# define the time points on which the functional predictor is observed. 
-timepts = seq(1, 700, 1)
-
-# define the fourier basis 
-nbasis = 31
-spline_basis = create.bspline.basis(c(1, 700), nbasis, norder = 4)
-
-# convert the functional predictor into a fda object
-OJ_fd =  Data2fd(timepts, t(OJ$full_df), spline_basis)
-OJ_deriv1 = deriv.fd(OJ_fd)
-
-# Testing with bike data
-func_cov_1 = OJ_fd$coefs
-func_cov_2 = OJ_deriv1$coefs
-OJ_data = array(dim = c(nbasis, nrow(OJ$full_df), 2))
-OJ_data[,,1] = func_cov_1
-OJ_data[,,2] = func_cov_2
-
-# Indices
-ind = sample(1:nrow(OJ$full_df), floor(0.5*nrow(OJ$full_df)))
-
-# Splitting response
-train_y = OJ_resp[ind]
-test_y = OJ_resp[-ind]
-
-# Setting up for FNN
-OJ_data_train = array(dim = c(nbasis, length(ind), 2))
-OJ_data_test = array(dim = c(nbasis, nrow(OJ$full_df) - length(ind), 2))
-OJ_data_train = OJ_data[, ind, ]
-OJ_data_test = OJ_data[, -ind, ]
-
-# Running FNN for bike
-OJ_example <- fnn.fit(resp = train_y, 
-                        func_cov = OJ_data_train, 
-                        scalar_cov = NULL,
-                        basis_choice = c("fourier", "fourier"), 
-                        num_basis = c(7, 9),
-                        hidden_layers = 4,
-                        neurons_per_layer = c(64, 64, 64, 64),
-                        activations_in_layers = c("relu", "relu", "relu", "linear"),
-                        domain_range = list(c(1, 700), c(1, 700)),
-                        epochs = 300,
-                        learn_rate = 0.0001,
-                        early_stopping = T,
-                        dropout = T)
-
-# Predicting
-OJ_pred = fnn.predict(OJ_example,
-                        OJ_data_test, 
-                        scalar_cov = NULL,
-                        basis_choice = c("fourier", "fourier"), 
-                        num_basis = c(7, 9),
-                        domain_range = list(c(1, 700), c(1, 700)))
-
-# Rounding predictions (they are probabilities)
-rounded_preds = ifelse(round(OJ_pred)[,2] == 1, 1, 0)
-
-# Confusion matrix
-caret::confusionMatrix(as.factor(rounded_preds), as.factor(test_y))
-
-
-
-#################################
-# FNNs Classification Paper     #
-#                               #
 # Example 1 code for JSS paper  #
 #                               #
 # Barinder Thind, Jiguo Cao     #
@@ -129,9 +26,9 @@ K$clear_session()
 options(warn=-1)
 
 # Setting seeds
-set.seed(1994)
+set.seed(2020)
 use_session_with_seed(
-  1994,
+  2020,
   disable_gpu = F,
   disable_parallel_cpu = F,
   quiet = T
@@ -172,7 +69,7 @@ final_data[,,3] = func_cov_3
 fdata_obj = fdata(full_df, argvals = timepts, rangeval = c(min(timepts), max(timepts)))
 
 # Choosing fold number
-num_folds = 10
+num_folds = 5
 
 # Creating folds
 fold_ind = createFolds(resp, k = num_folds)
@@ -231,7 +128,7 @@ for (i in 1:num_folds) {
   ###################################
   
   # Functional Linear Model (Basis)
-  l=2^(-2:6)
+  l=2^(-4:2)
   func_basis = fregre.basis.cv(train_x, train_y, type.basis = "fourier",
                                lambda=l, type.CV = GCV.S, par.CV = list(trim=0.15))
   pred_basis = round(predict(func_basis[[1]], test_x))
@@ -239,19 +136,19 @@ for (i in 1:num_folds) {
   confusion_flm = confusionMatrix(as.factor(final_pred_basis), as.factor(test_y))
   
   # Functional Principal Component Regression (No Penalty)
-  func_pc = fregre.pc.cv(train_x, train_y, 6)
+  func_pc = fregre.pc.cv(train_x, train_y, 8)
   pred_pc = round(predict(func_pc$fregre.pc, test_x))
   final_pred_pc = ifelse(pred_pc < min(test_y), min(test_y), ifelse(pred_pc > max(test_y), max(test_y), pred_pc))
   confusion_fpc = confusionMatrix(as.factor(final_pred_pc), as.factor(test_y))
   
   # Functional Principal Component Regression (2nd Deriv Penalization)
-  func_pc2 = fregre.pc.cv(train_x, train_y, 6, lambda=TRUE, P=c(0,0,1))
+  func_pc2 = fregre.pc.cv(train_x, train_y, 8, lambda=TRUE, P=c(0,0,1))
   pred_pc2 = round(predict(func_pc2$fregre.pc, test_x))
   final_pred_pc2 = ifelse(pred_pc2 < min(test_y), min(test_y), ifelse(pred_pc2 > max(test_y), max(test_y), pred_pc2))
   confusion_fpc2 = confusionMatrix(as.factor(final_pred_pc2), as.factor(test_y))
   
   # Functional Principal Component Regression (Ridge Regression)
-  func_pc3 = fregre.pc.cv(train_x, train_y, 1:6, lambda=TRUE, P=1)
+  func_pc3 = fregre.pc.cv(train_x, train_y, 1:8, lambda=TRUE, P=1)
   pred_pc3 = round(predict(func_pc3$fregre.pc, test_x))
   final_pred_pc3 = ifelse(pred_pc3 < min(test_y), min(test_y), ifelse(pred_pc3 > max(test_y), max(test_y), pred_pc3))
   confusion_fpc3 = confusionMatrix(as.factor(final_pred_pc3), as.factor(test_y))
@@ -363,8 +260,8 @@ for (i in 1:num_folds) {
   # Setting up FNN model
   model_nn <- keras_model_sequential()
   model_nn %>% 
-    layer_dense(units = 128, activation = 'sigmoid') %>%
-    layer_dense(units = 32, activation = 'sigmoid') %>%
+    layer_dense(units = 128, activation = 'relu') %>%
+    layer_dense(units = 32, activation = 'relu') %>%
     layer_dense(units = length(unique(resp)), activation = 'softmax')
   
   # Setting parameters for FNN model
@@ -439,25 +336,29 @@ for (i in 1:num_folds) {
   # Setting up FNN model
   model_fnn <- keras_model_sequential()
   model_fnn %>% 
-    layer_dense(units = 128, activation = 'relu') %>%
-    layer_dense(units = 32, activation = 'relu') %>%
-    layer_dense(units = 32, activation = 'relu') %>%
+    layer_dense(units = 256,
+                activation = 'sigmoid') %>%
+    layer_dense(units = 256,
+                activation = 'sigmoid') %>%
+    layer_dropout(0.4) %>%
+    layer_dense(units = 128,
+                activation = 'relu') %>%
     layer_dense(units = length(unique(resp)), activation = 'softmax')
   
   # Setting parameters for FNN model
   model_fnn %>% compile(
-    optimizer = optimizer_adam(lr = 0.00325), 
+    optimizer = optimizer_adam(lr = 5e-04), 
     loss = 'sparse_categorical_crossentropy',
     metrics = c('accuracy')
   )
-  
+
   # Early stopping
   early_stop <- callback_early_stopping(monitor = "val_loss", patience = 15)
   
   # Training FNN model
   model_fnn %>% fit(pre_train$data, 
                     train_y, 
-                    epochs = 250,  
+                    epochs = 300,  
                     validation_split = 0.2,
                     callbacks = list(early_stop),
                     verbose = 0)
@@ -515,7 +416,7 @@ Final_Table[9, ] = c(colMeans(error_mat_nn, na.rm = T), sd(error_mat_nn[,1]))
 Final_Table[10, ] = c(colMeans(error_mat_glm, na.rm = T), sd(error_mat_glm[,1]))
 Final_Table[11, ] = c(colMeans(error_mat_rf, na.rm = T), sd(error_mat_rf[,1]))
 Final_Table[12, ] = c(colMeans(error_mat_gbm, na.rm = T), sd(error_mat_gbm[,1]))
-Final_Table[13, ] = c(colMeans(error_mat_fnn, na.rm = T), sd(error_mat_flm[,1]))
+Final_Table[13, ] = c(colMeans(error_mat_fnn, na.rm = T), sd(error_mat_fnn[,1]))
 
 # Editing names
 rownames(Final_Table) = c("FLM", "FNP", "FPC_1", "FPC_2", "FPC_3", "FPLS_1", "FPLS_2",
