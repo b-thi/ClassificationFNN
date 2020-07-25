@@ -1,241 +1,7 @@
 #################################
 # FNNs Classification Paper     #
 #                               #
-# Example 1 code for JSS paper  #
-#                               #
-# Barinder Thind, Jiguo Cao     #
-#################################
-
-# Libraries
-library(fda)
-library(keras)
-library(ggplot2)
-library(refund)
-library(modEvA)
-source("fnn_preprocess.R")
-
-# Clearing backend
-K <- backend()
-K$clear_session()
-options(warn=-1)
-
-# Setting seeds
-set.seed(1)
-use_session_with_seed(
-  1,
-  disable_gpu = F,
-  disable_parallel_cpu = F,
-  quiet = T
-)
-
-# devtools::install_github("b-thi/FNN")
-
-# Loading data
-load("Wine.RData")
-
-# Combining data
-Wine$full_resp = c(Wine$y.learning, Wine$y.test)
-Wine$full_df = data.frame(rbind(Wine$x.learning, Wine$x.test))
-
-# Making classification bins
-wine_resp = ifelse(Wine$full_resp > 12, 1, 0)
-
-# define the time points on which the functional predictor is observed. 
-timepts = seq(1, 256, 1)
-
-# define the fourier basis 
-nbasis = 35
-spline_basis = create.bspline.basis(c(1, 256), nbasis, norder = 4)
-
-# convert the functional predictor into a fda object
-wine_fd =  Data2fd(timepts, t(Wine$full_df), spline_basis)
-wine_deriv1 = deriv.fd(wine_fd)
-wine_deriv2 = deriv.fd(wine_deriv1)
-
-# Testing with bike data
-func_cov_1 = wine_fd$coefs
-func_cov_2 = wine_deriv1$coefs
-func_cov_3 = wine_deriv2$coefs
-wine_data = array(dim = c(nbasis, nrow(Wine$full_df), 3))
-wine_data[,,1] = func_cov_1
-wine_data[,,2] = func_cov_2
-wine_data[,,3] = func_cov_3
-
-# Indices
-ind = sample(1:nrow(Wine$full_df), floor(0.5*nrow(Wine$full_df)))
-
-# Splitting response
-train_y = wine_resp[ind]
-test_y = wine_resp[-ind]
-
-# Setting up for FNN
-wine_data_train = array(dim = c(nbasis, length(ind), 3))
-wine_data_test = array(dim = c(nbasis, nrow(Wine$full_df) - length(ind), 3))
-wine_data_train = wine_data[, ind, ]
-wine_data_test = wine_data[, -ind, ]
-
-# Now, let's pre-process
-wine_pre_train = FNN_Preprocess(func_cov = wine_data_train,
-                                basis_choice = c("fourier", "fourier", "fourier"),
-                                num_basis = c(5, 7, 9),
-                                domain_range = list(c(1, 256), c(1, 256), c(1, 256)),
-                                covariate_scaling = T,
-                                raw_data = F)
-
-wine_pre_test = FNN_Preprocess(func_cov = wine_data_test,
-                               basis_choice = c("fourier", "fourier", "fourier"),
-                               num_basis = c(5, 7, 9),
-                               domain_range = list(c(1, 256), c(1, 256), c(1, 256)),
-                               covariate_scaling = T,
-                               raw_data = F)
-
-# Setting up FNN model
-model_fnn <- keras_model_sequential()
-model_fnn %>% 
-  layer_dense(units = 128, activation = 'sigmoid') %>%
-  layer_dropout(rate = 0.5) %>% 
-  layer_batch_normalization() %>% 
-  layer_dense(units = 32, activation = 'sigmoid') %>%
-  layer_dropout(rate = 0.5) %>% 
-  layer_batch_normalization() %>% 
-  layer_dense(units = 2, activation = 'softmax')
-
-# Setting parameters for FNN model
-model_fnn %>% compile(
-  optimizer = optimizer_adam(lr = 0.001), 
-  loss = 'sparse_categorical_crossentropy',
-  metrics = c('accuracy')
-)
-
-# Early stopping
-early_stop <- callback_early_stopping(monitor = "val_loss", patience = 15)
-
-# Training FNN model
-model_fnn %>% fit(wine_pre_train$data, 
-                  train_y, 
-                  epochs = 250,  
-                  validation_split = 0.2,
-                  callbacks = list(early_stop))
-
-# Getting predictions from FNN model
-score <- model_fnn %>% keras::evaluate(wine_pre_test$data, test_y)
-cat('Test loss:', score$loss, "\n")
-cat('Test accuracy:', score$acc, "\n")
-
-# Predictions
-test_predictions <- model_fnn %>% predict(wine_pre_test$data)
-preds = apply(test_predictions, 1, function(x){return(which.max(x))}) - 1
-
-# Plotting
-a = caret::confusionMatrix(as.factor(test_y), as.factor(preds))
-
-a$overall
-a$byClass
-
-
-############# FDA EXAMPLES ##############
-
-# fData Object
-wine_fdata = fdata(Wine$full_df, argvals = timepts, rangeval = c(1, 150))
-
-# Test and train
-train_x = wine_fdata[ind,]
-test_x = wine_fdata[-ind,]
-train_y = wine_resp[ind]
-test_y = wine_resp[-ind]
-
-
-# Predicting
-mlearn <- train_x
-mlearn2 <- test_x
-glearn <- train_y
-out20 = classif.DD(glearn, mlearn, depth="mode", classif="glm")
-
-out21 = classif.DD(glearn, 
-                 list(mlearn, mlearn2), 
-                 depth="modep", 
-                 classif="glm", 
-                 control=list(draw=F))
-
-out20 # univariate functional data
-
-
-
-# Functional Linear Model (Basis)
-l=2^(-4:10)
-func_basis = fregre.basis.cv(train_x, train_y, type.basis = "fourier",
-                             lambda=l, type.CV = GCV.S, par.CV = list(trim=0.15))
-pred_basis = round(predict(func_basis[[1]], test_x))
-caret::confusionMatrix(as.factor(pred_basis), as.factor(test_y))
-
-# Functional Principal Component Regression (No Penalty)
-func_pc = fregre.pc.cv(train_x, train_y, 8)
-pred_pc = round(predict(func_pc$fregre.pc, test_x))
-caret::confusionMatrix(as.factor(pred_pc), as.factor(test_y))
-
-# Functional Principal Component Regression (2nd Deriv Penalization)
-func_pc2 = fregre.pc.cv(train_x, train_y, 8, lambda=TRUE, P=c(0,0,1))
-pred_pc2 = round(predict(func_pc2$fregre.pc, test_x))
-caret::confusionMatrix(as.factor(pred_pc2), as.factor(test_y))
-
-# Functional Principal Component Regression (Ridge Regression)
-func_pc3 = fregre.pc.cv(train_x, train_y, 1:8, lambda=TRUE, P=1)
-pred_pc3 = round(predict(func_pc3$fregre.pc, test_x))
-caret::confusionMatrix(as.factor(pred_pc3), as.factor(test_y))
-
-# Functional Partial Least Squares Regression (No Penalty)
-func_pls = fregre.pls(train_x, train_y, 1:6)
-pred_pls = round(predict(func_pls, test_x))
-caret::confusionMatrix(as.factor(pred_pls), as.factor(test_y))
-
-# Functional Partial Least Squares Regression (2nd Deriv Penalization)
-func_pls2 = fregre.pls.cv(train_x, train_y, 8, lambda = 1:3, P=c(0,0,1))
-pred_pls2 = round(predict(func_pls2$fregre.pls, test_x))
-caret::confusionMatrix(as.factor(pred_pls2), as.factor(test_y))
-
-# Functional Non-Parametric Regression
-func_np = fregre.np(train_x, train_y, Ker = AKer.tri, metric = semimetric.deriv)
-pred_np = round(predict(func_np, test_x))
-caret::confusionMatrix(as.factor(pred_np), as.factor(test_y))
-
-
-# Comparing with regression model
-wine_resp = ifelse(Wine$full_resp > 12, 1, 0)
-Wine$full_df$resp = wine_resp
-Wine_MV_train = Wine$full_df[ind,]
-Wine_MV_test = Wine$full_df[-ind,]
-
-# Running rf
-fit_glm = glm(as.factor(resp) ~ ., data = Wine_MV_train, family = "binomial")
-glm_pred = round(predict(fit_glm, newdata = Wine_MV_test, type = "response"))
-
-# Confusion matrix
-a = confusionMatrix(as.factor(glm_pred), as.factor(test_y))
-
-c(a$overall[1], a$byClass[c(1, 2, 3, 4)])
-
-## Regular NN
-## RandomForest
-## 1 fda method - class
-## 1 fda method - class
-## SVM
-## LASSO
-## MARS
-
-# Wine Example
-# Tecator Example
-# Phoneme Example
-# Stars Example
-# Simulation example = 4 scenarios
-
-# Plot to save: FDA plots + derivatives + FNC of the model -> save FNC at the bottom
-# Save error, senstivity, specificity, sd of accuracy, positive, negative, 
-# Store full 10 fold cv results for all examples in one big table
-
-#################################
-# FNNs Classification Paper     #
-#                               #
-# Example 1 code for JSS paper  #
+# Example 1 code for paper      #
 #                               #
 # Barinder Thind, Jiguo Cao     #
 #################################
@@ -252,6 +18,7 @@ library(caret)
 library(randomForest)
 library(e1071)
 library(gbm)
+library(stringr)
 source("fnn_preprocess.R")
 
 # Clearing backend
@@ -260,9 +27,9 @@ K$clear_session()
 options(warn=-1)
 
 # Setting seeds
-set.seed(1994)
+set.seed(1919)
 use_session_with_seed(
-  1994,
+  1919,
   disable_gpu = F,
   disable_parallel_cpu = F,
   quiet = T
@@ -271,18 +38,18 @@ use_session_with_seed(
 # Loading data
 load("Wine.RData")
 
-# Setting up data
+# Combining data
 full_resp = c(Wine$y.learning, Wine$y.test)
 full_df = data.frame(rbind(Wine$x.learning, Wine$x.test))
 
-# Making response variable
+# Making classification bins
 resp = ifelse(full_resp > 12, 1, 0)
 
 # define the time points on which the functional predictor is observed. 
 timepts = seq(1, 256, 1)
 
 # define the fourier basis 
-nbasis = 35
+nbasis = 47
 spline_basis = create.fourier.basis(c(min(timepts), max(timepts)), nbasis)
 
 # convert the functional predictor into a fda object
@@ -329,6 +96,30 @@ error_mat_glm = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_rf = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_gbm = matrix(nrow = num_folds, ncol = num_measures)
 
+# Doing pre-processing of neural networks
+if(dim(final_data)[3] > 1){
+  # Now, let's pre-process
+  pre_dat = FNN_Preprocess(func_cov = final_data,
+                           basis_choice = c("fourier", "fourier", "fourier"),
+                           num_basis = c(5, 7, 9),
+                           domain_range = list(c(min(timepts), max(timepts)), 
+                                               c(min(timepts), max(timepts)), 
+                                               c(min(timepts), max(timepts))),
+                           covariate_scaling = T,
+                           raw_data = F)
+  
+} else {
+  
+  # Now, let's pre-process
+  pre_dat = FNN_Preprocess(func_cov = final_data,
+                           basis_choice = c("fourier"),
+                           num_basis = c(5),
+                           domain_range = list(c(min(timepts), max(timepts))),
+                           covariate_scaling = T,
+                           raw_data = F)
+}
+
+
 
 # Looping to get results
 for (i in 1:num_folds) {
@@ -344,25 +135,16 @@ for (i in 1:num_folds) {
   test_y = resp[fold_ind[[i]]]
   
   # Setting up for FNN
-  if(dim(final_data)[3] == 1){
-    data_train = array(dim = c(nbasis, nrow(train_x$data), 1))
-    data_test = array(dim = c(nbasis, nrow(test_x$data), 1))
-    data_train[,,1] = final_data[, -fold_ind[[i]], ]
-    data_test[,,1] = final_data[, fold_ind[[i]], ]
-  } else {
-    data_train = array(dim = c(nbasis, nrow(train_x$data), dim(final_data)[3]))
-    data_test = array(dim = c(nbasis, nrow(test_x$data), dim(final_data)[3]))
-    data_train = final_data[, -fold_ind[[i]], ]
-    data_test = final_data[, fold_ind[[i]], ]
-  }
-
+  pre_train = pre_dat$data[-fold_ind[[i]], ]
+  pre_test = pre_dat$data[fold_ind[[i]], ]
+  
   
   ###################################
   # Running usual functional models #
   ###################################
   
   # Functional Linear Model (Basis)
-  l=2^(-2:6)
+  l=2^(-2:8)
   func_basis = fregre.basis.cv(train_x, train_y, type.basis = "fourier",
                                lambda=l, type.CV = GCV.S, par.CV = list(trim=0.15))
   pred_basis = round(predict(func_basis[[1]], test_x))
@@ -376,7 +158,7 @@ for (i in 1:num_folds) {
   confusion_fpc = confusionMatrix(as.factor(final_pred_pc), as.factor(test_y))
   
   # Functional Principal Component Regression (2nd Deriv Penalization)
-  func_pc2 = fregre.pc.cv(train_x, train_y, 8, lambda=TRUE, P=c(0,0,1))
+  func_pc2 = fregre.pc.cv(train_x, train_y, 3, lambda=TRUE, P=c(0,0,1))
   pred_pc2 = round(predict(func_pc2$fregre.pc, test_x))
   final_pred_pc2 = ifelse(pred_pc2 < min(test_y), min(test_y), ifelse(pred_pc2 > max(test_y), max(test_y), pred_pc2))
   confusion_fpc2 = confusionMatrix(as.factor(final_pred_pc2), as.factor(test_y))
@@ -388,13 +170,13 @@ for (i in 1:num_folds) {
   confusion_fpc3 = confusionMatrix(as.factor(final_pred_pc3), as.factor(test_y))
   
   # Functional Partial Least Squares Regression (No Penalty)
-  func_pls = fregre.pls(train_x, train_y, 1:6)
+  func_pls = fregre.pls(train_x, train_y, 1:4)
   pred_pls = round(predict(func_pls, test_x))
   final_pred_pls = ifelse(pred_pls < min(test_y), min(test_y), ifelse(pred_pls > max(test_y), max(test_y), pred_pls))
   confusion_pls = confusionMatrix(as.factor(final_pred_pls), as.factor(test_y))
   
   # Functional Partial Least Squares Regression (2nd Deriv Penalization)
-  func_pls2 = fregre.pls.cv(train_x, train_y, 8, lambda = 1:3, P=c(0,0,1))
+  func_pls2 = fregre.pls.cv(train_x, train_y, 3, lambda = 1:2, P=c(0,0,1))
   pred_pls2 = round(predict(func_pls2$fregre.pls, test_x))
   final_pred_pls2 = ifelse(pred_pls2 < min(test_y), min(test_y), ifelse(pred_pls2 > max(test_y), max(test_y), pred_pls2))
   confusion_pls2 = confusionMatrix(as.factor(final_pred_pls2), as.factor(test_y))
@@ -414,6 +196,8 @@ for (i in 1:num_folds) {
   # Setting up MV data
   MV_train = as.data.frame(full_df[-fold_ind[[i]],])
   MV_test = as.data.frame(full_df[fold_ind[[i]],])
+  colnames(MV_train) = paste0("v", gsub(" ", "_", colnames(MV_train)))
+  colnames(MV_test) = paste0("v", gsub(" ", "_", colnames(MV_test)))
   train_y = resp[-fold_ind[[i]]]
   test_y = resp[fold_ind[[i]]]
   
@@ -426,7 +210,7 @@ for (i in 1:num_folds) {
   # Running rf
   
   # Creating grid to tune over
-  tuning_par <- expand.grid(c(seq(1, ncol(full_df), round(ncol(full_df)*0.25))), c(2, 4, 6, 8, 10))
+  tuning_par <- expand.grid(c(seq(1, ncol(full_df), round(ncol(full_df)*0.5))), c(4, 6, 8))
   colnames(tuning_par) <- c("mtry", "nodesize")
   
   # Parallel applying
@@ -436,7 +220,8 @@ for (i in 1:num_folds) {
   tuning_rf <- future_apply(tuning_par, 1, function(x){
     
     # Running Cross Validations
-    rf_model <- randomForest(as.factor(train_y) ~ ., data = MV_train,
+    rf_model <- randomForest(as.factor(train_y) ~ ., 
+                             data = MV_train,
                              mtry = x[1],
                              nodesize = x[2])
     
@@ -473,9 +258,9 @@ for (i in 1:num_folds) {
   gbm_model <- gbm(data = MV_train, 
                    as.factor(train_y) ~ ., 
                    distribution="gaussian", 
-                   n.trees = 2000, 
-                   interaction.depth = 7, 
-                   shrinkage = 0.001, 
+                   n.trees = 1000, 
+                   interaction.depth = 5, 
+                   shrinkage = 0.01, 
                    bag.fraction = 0.7,
                    n.minobsinnode = 11)
   
@@ -493,13 +278,13 @@ for (i in 1:num_folds) {
   # Setting up FNN model
   model_nn <- keras_model_sequential()
   model_nn %>% 
-    layer_dense(units = 128, activation = 'sigmoid') %>%
-    layer_dense(units = 32, activation = 'sigmoid') %>%
+    layer_dense(units = 128, activation = 'relu') %>%
+    layer_dense(units = 32, activation = 'relu') %>%
     layer_dense(units = length(unique(resp)), activation = 'softmax')
   
   # Setting parameters for FNN model
   model_nn %>% compile(
-    optimizer = optimizer_adam(lr = 0.01), 
+    optimizer = optimizer_adam(lr = 0.001), 
     loss = 'sparse_categorical_crossentropy',
     metrics = c('accuracy')
   )
@@ -509,11 +294,11 @@ for (i in 1:num_folds) {
   
   # Training FNN model
   model_nn %>% fit(as.matrix(MV_train), 
-                    train_y, 
-                    epochs = 150,  
-                    validation_split = 0.2,
-                    callbacks = list(early_stop),
-                    verbose = 0)
+                   train_y, 
+                   epochs = 150,  
+                   validation_split = 0.2,
+                   callbacks = list(early_stop),
+                   verbose = 0)
   
   # Predictions
   test_predictions <- model_nn %>% predict(as.matrix(MV_test))
@@ -528,57 +313,23 @@ for (i in 1:num_folds) {
   # Running Functional Neural Network #
   #####################################
   
-  if(dim(data_train)[3] > 1){
-    # Now, let's pre-process
-    pre_train = FNN_Preprocess(func_cov = data_train,
-                               basis_choice = c("fourier", "fourier", "fourier"),
-                               num_basis = c(5, 7, 9),
-                               domain_range = list(c(min(timepts), max(timepts)), 
-                                                   c(min(timepts), max(timepts)), 
-                                                   c(min(timepts), max(timepts))),
-                               covariate_scaling = T,
-                               raw_data = F)
-    
-    pre_test = FNN_Preprocess(func_cov = data_test,
-                              basis_choice = c("fourier", "fourier", "fourier"),
-                              num_basis = c(5, 7, 9),
-                              domain_range = list(c(min(timepts), max(timepts)), 
-                                                  c(min(timepts), max(timepts)), 
-                                                  c(min(timepts), max(timepts))),
-                              covariate_scaling = T,
-                              raw_data = F)
-  } else {
-    
-    # Now, let's pre-process
-    pre_train = FNN_Preprocess(func_cov = data_train,
-                               basis_choice = c("fourier"),
-                               num_basis = c(5),
-                               domain_range = list(c(min(timepts), max(timepts))),
-                               covariate_scaling = T,
-                               raw_data = F)
-    
-    pre_test = FNN_Preprocess(func_cov = data_test,
-                              basis_choice = c("fourier"),
-                              num_basis = c(5),
-                              domain_range = list(c(min(timepts), max(timepts))),
-                              covariate_scaling = T,
-                              raw_data = F)
-  }
-
   
   # Setting up FNN model
   model_fnn <- keras_model_sequential()
   model_fnn %>% 
-    layer_dense(units = 128, activation = 'sigmoid') %>%
-    layer_dropout(rate = 0.5) %>% 
-    layer_batch_normalization() %>% 
-    layer_dense(units = 32, activation = 'sigmoid') %>%
-    layer_batch_normalization() %>% 
+    layer_dense(units = 128,
+                activation = "relu") %>%
+    layer_dense(units = 64,
+                activation = "relu") %>%
+    layer_dropout(0.4) %>%
+    layer_dense(units = 128,
+                activation = "sigmoid") %>%
     layer_dense(units = length(unique(resp)), activation = 'softmax')
+  
   
   # Setting parameters for FNN model
   model_fnn %>% compile(
-    optimizer = optimizer_adam(lr = 0.001), 
+    optimizer = optimizer_adam(lr = 5e-03), 
     loss = 'sparse_categorical_crossentropy',
     metrics = c('accuracy')
   )
@@ -587,19 +338,19 @@ for (i in 1:num_folds) {
   early_stop <- callback_early_stopping(monitor = "val_loss", patience = 15)
   
   # Training FNN model
-  model_fnn %>% fit(pre_train$data, 
+  model_fnn %>% fit(pre_train, 
                     train_y, 
-                    epochs = 250,  
+                    epochs = 300,  
                     validation_split = 0.2,
                     callbacks = list(early_stop),
                     verbose = 0)
   
   # Predictions
-  test_predictions <- model_fnn %>% predict(pre_test$data)
-  preds = apply(test_predictions, 1, function(x){return(which.max(x))}) - 1
+  test_predictions <- model_fnn %>% predict(pre_test)
+  preds_fnn = apply(test_predictions, 1, function(x){return(which.max(x))}) - 1
   
   # Plotting
-  confusion_fnn = confusionMatrix(as.factor(preds), as.factor(test_y))
+  confusion_fnn = confusionMatrix(as.factor(preds_fnn), as.factor(test_y))
   
   print("Done: FNN Modelling")
   
@@ -647,11 +398,11 @@ Final_Table[9, ] = c(colMeans(error_mat_nn, na.rm = T), sd(error_mat_nn[,1]))
 Final_Table[10, ] = c(colMeans(error_mat_glm, na.rm = T), sd(error_mat_glm[,1]))
 Final_Table[11, ] = c(colMeans(error_mat_rf, na.rm = T), sd(error_mat_rf[,1]))
 Final_Table[12, ] = c(colMeans(error_mat_gbm, na.rm = T), sd(error_mat_gbm[,1]))
-Final_Table[13, ] = c(colMeans(error_mat_fnn, na.rm = T), sd(error_mat_flm[,1]))
+Final_Table[13, ] = c(colMeans(error_mat_fnn, na.rm = T), sd(error_mat_fnn[,1]))
 
 # Editing names
 rownames(Final_Table) = c("FLM", "FNP", "FPC_1", "FPC_2", "FPC_3", "FPLS_1", "FPLS_2",
-                         "SVM", "NN", "GLM", "RF", "GBM", "FNN")
+                          "SVM", "NN", "GLM", "RF", "GBM", "FNN")
 colnames(Final_Table) = c("Error", "Sensitivity", "Specificity", "Positive Rate", "Negative Rate", "SD_Error")
 
 # Looking at results
@@ -685,28 +436,28 @@ beta_coef_lm <- data.frame(time = timepts,
 
 # Running FNN for weather
 fnn_final = FNN(resp = resp, 
-                  func_cov = final_data, 
-                  scalar_cov = NULL,
-                  basis_choice = c("fourier", "fourier", "fourier"), 
-                  num_basis = c(5, 7, 9),
-                  hidden_layers = 2,
-                  neurons_per_layer = c(16, 8),
-                  activations_in_layers = c("relu", "sigmoid"),
-                  domain_range = list(c(min(timepts), max(timepts)), 
-                                      c(min(timepts), max(timepts)), 
-                                      c(min(timepts), max(timepts))),
-                  epochs = 250,
-                  output_size = 1,
-                  loss_choice = "mse",
-                  metric_choice = list("mean_squared_error"),
-                  val_split = 0.2,
-                  patience_param = 25,
-                  learn_rate = 0.05,
-                  early_stop = T,
-                  print_info = F)
+                func_cov = final_data, 
+                scalar_cov = NULL,
+                basis_choice = c("fourier", "fourier", "fourier"), 
+                num_basis = c(5, 7, 9),
+                hidden_layers = 2,
+                neurons_per_layer = c(16, 8),
+                activations_in_layers = c("relu", "sigmoid"),
+                domain_range = list(c(min(timepts), max(timepts)), 
+                                    c(min(timepts), max(timepts)), 
+                                    c(min(timepts), max(timepts))),
+                epochs = 250,
+                output_size = 1,
+                loss_choice = "mse",
+                metric_choice = list("mean_squared_error"),
+                val_split = 0.2,
+                patience_param = 25,
+                learn_rate = 0.05,
+                early_stop = T,
+                print_info = F)
 
 # Getting the FNC
-coefficients_fnn = rowMeans(get_weights(fnn_final$model)[[1]])
+coefficients_fnn = rowMeans(get_weights(fnn_final$model)[[1]])[1:5]
 
 # Setting up data set
 beta_coef_fnn <- data.frame(time = timepts, 

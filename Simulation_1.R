@@ -1,7 +1,7 @@
 #################################
 # FNNs Classification Paper     #
 #                               #
-# Sim 1 code for JSS paper      #
+# Sim 1 code for paper          #
 #                               #
 # Barinder Thind, Jiguo Cao     #
 #################################
@@ -110,6 +110,29 @@ for (j in 1:num_sims) {
   error_mat_rf = matrix(nrow = num_folds, ncol = num_measures)
   error_mat_gbm = matrix(nrow = num_folds, ncol = num_measures)
   
+  # Doing pre-processing of neural networks
+  if(dim(final_data)[3] > 1){
+    # Now, let's pre-process
+    pre_dat = FNN_Preprocess(func_cov = final_data,
+                               basis_choice = c("fourier", "fourier", "fourier"),
+                               num_basis = c(5, 7, 9),
+                               domain_range = list(c(min(timepts), max(timepts)), 
+                                                   c(min(timepts), max(timepts)), 
+                                                   c(min(timepts), max(timepts))),
+                               covariate_scaling = T,
+                               raw_data = F)
+
+  } else {
+    
+    # Now, let's pre-process
+    pre_dat = FNN_Preprocess(func_cov = final_data,
+                               basis_choice = c("fourier"),
+                               num_basis = c(5),
+                               domain_range = list(c(min(timepts), max(timepts))),
+                               covariate_scaling = T,
+                               raw_data = F)
+  }
+  
   
   # Looping to get results
   for (i in 1:num_folds) {
@@ -125,18 +148,8 @@ for (j in 1:num_sims) {
     test_y = resp[fold_ind[[i]]]
     
     # Setting up for FNN
-    if(dim(final_data)[3] == 1){
-      data_train = array(dim = c(nbasis, nrow(train_x$data), 1))
-      data_test = array(dim = c(nbasis, nrow(test_x$data), 1))
-      data_train[,,1] = final_data[, -fold_ind[[i]], ]
-      data_test[,,1] = final_data[, fold_ind[[i]], ]
-    } else {
-      data_train = array(dim = c(nbasis, nrow(train_x$data), dim(final_data)[3]))
-      data_test = array(dim = c(nbasis, nrow(test_x$data), dim(final_data)[3]))
-      data_train = final_data[, -fold_ind[[i]], ]
-      data_test = final_data[, fold_ind[[i]], ]
-    }
-    
+    pre_train = pre_dat$data[-fold_ind[[i]], ]
+    pre_test = pre_dat$data[fold_ind[[i]], ]
     
     ###################################
     # Running usual functional models #
@@ -309,43 +322,6 @@ for (j in 1:num_sims) {
     # Running Functional Neural Network #
     #####################################
     
-    if(dim(data_train)[3] > 1){
-      # Now, let's pre-process
-      pre_train = FNN_Preprocess(func_cov = data_train,
-                                 basis_choice = c("fourier", "fourier", "fourier"),
-                                 num_basis = c(5, 7, 9),
-                                 domain_range = list(c(min(timepts), max(timepts)), 
-                                                     c(min(timepts), max(timepts)), 
-                                                     c(min(timepts), max(timepts))),
-                                 covariate_scaling = T,
-                                 raw_data = F)
-      
-      pre_test = FNN_Preprocess(func_cov = data_test,
-                                basis_choice = c("fourier", "fourier", "fourier"),
-                                num_basis = c(5, 7, 9),
-                                domain_range = list(c(min(timepts), max(timepts)), 
-                                                    c(min(timepts), max(timepts)), 
-                                                    c(min(timepts), max(timepts))),
-                                covariate_scaling = T,
-                                raw_data = F)
-    } else {
-      
-      # Now, let's pre-process
-      pre_train = FNN_Preprocess(func_cov = data_train,
-                                 basis_choice = c("fourier"),
-                                 num_basis = c(5),
-                                 domain_range = list(c(min(timepts), max(timepts))),
-                                 covariate_scaling = T,
-                                 raw_data = F)
-      
-      pre_test = FNN_Preprocess(func_cov = data_test,
-                                basis_choice = c("fourier"),
-                                num_basis = c(5),
-                                domain_range = list(c(min(timepts), max(timepts))),
-                                covariate_scaling = T,
-                                raw_data = F)
-    }
-    
     
     # Setting up FNN model
     model_fnn <- keras_model_sequential()
@@ -368,7 +344,7 @@ for (j in 1:num_sims) {
     early_stop <- callback_early_stopping(monitor = "val_loss", patience = 15)
     
     # Training FNN model
-    model_fnn %>% fit(pre_train$data, 
+    model_fnn %>% fit(pre_train, 
                       train_y, 
                       epochs = 250,  
                       validation_split = 0.2,
@@ -376,7 +352,7 @@ for (j in 1:num_sims) {
                       verbose = 0)
     
     # Predictions
-    test_predictions <- model_fnn %>% predict(pre_test$data)
+    test_predictions <- model_fnn %>% predict(pre_test)
     preds = apply(test_predictions, 1, function(x){return(which.max(x))}) - 1
     
     # Plotting

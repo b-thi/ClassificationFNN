@@ -1,7 +1,7 @@
 #################################
 # FNNs Classification Paper     #
 #                               #
-# Example 1 code for JSS paper  #
+# Example 3 code for paper      #
 #                               #
 # Barinder Thind, Jiguo Cao     #
 #################################

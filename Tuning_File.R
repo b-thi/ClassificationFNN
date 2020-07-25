@@ -1,7 +1,7 @@
 #################################
 # FNNs Classification Paper     #
 #                               #
-# Example 1 code for JSS paper  #
+# Tuning code for paper part 1  #
 #                               #
 # Barinder Thind, Jiguo Cao     #
 #################################
@@ -65,7 +65,7 @@ final_data[,,3] = func_cov_3
 fdata_obj = fdata(full_df, argvals = timepts, rangeval = c(min(timepts), max(timepts)))
 
 # Choosing fold number
-num_folds = 10
+num_folds = 2
 
 # Creating folds
 fold_ind = createFolds(resp, k = num_folds)
