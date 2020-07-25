@@ -48,11 +48,10 @@ preds = apply(test_predictions, 1, function(x){return(which.max(x))}) - 1
 confusion_fnn = confusionMatrix(as.factor(preds), as.factor(test_y))
 accuracy = confusion_fnn$overall[1]
 
+# Saving model
 save_model_hdf5(model_fnn, 'model.h5')
 
-# cat('Test loss:', score$loss, '\n')
-# cat('Test accuracy:', score$acc, '\n')
-
+# Printing accuracy
 cat('Test accuracy:', accuracy, '\n')
 
 # Clearing backend
