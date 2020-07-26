@@ -35,18 +35,19 @@ use_session_with_seed(
   quiet = T
 )
 
+# Loading data
+df_train = read.table("fungi/fungi_TRAIN.txt", as.is = T, header = F)
+df_test = read.table("fungi/fungi_TEST.txt", as.is = T, header = F)
+
 # Combining data
-full_resp = range01(gasoline[,1])
-full_df = gasoline[,-1]
+full_resp = c(df_train[,1], df_test[,1]) - 1
+full_df = rbind(df_train[,-1], df_test[,-1])
 
 # Making classification bins
-resp = ifelse(full_resp > 0.5, 1, 0)
+resp = full_resp
 
 # define the time points on which the functional predictor is observed. 
-timepts = seq(900, 1700, 2)
-
-# define the time points on which the functional predictor is observed. 
-timepts = tecator$absorp.fdata$argvals
+timepts = seq(1, 201, 1)
 
 # define the fourier basis 
 nbasis = 47
@@ -70,13 +71,13 @@ final_data[,,3] = func_cov_3
 fdata_obj = fdata(full_df, argvals = timepts, rangeval = c(min(timepts), max(timepts)))
 
 # Choosing fold number
-num_folds = 5
+num_folds = 2
 
 # Creating folds
 fold_ind = createFolds(resp, k = num_folds)
 
 # numbr of models
-num_models = 13
+num_models = 8
 
 # number of measures
 num_measures = 5
@@ -90,11 +91,11 @@ error_mat_pls1 = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_pls2 = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_np = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_fnn = matrix(nrow = num_folds, ncol = num_measures)
-error_mat_svm = matrix(nrow = num_folds, ncol = num_measures)
-error_mat_nn = matrix(nrow = num_folds, ncol = num_measures)
-error_mat_glm = matrix(nrow = num_folds, ncol = num_measures)
-error_mat_rf = matrix(nrow = num_folds, ncol = num_measures)
-error_mat_gbm = matrix(nrow = num_folds, ncol = num_measures)
+# error_mat_svm = matrix(nrow = num_folds, ncol = num_measures)
+# error_mat_nn = matrix(nrow = num_folds, ncol = num_measures)
+# error_mat_glm = matrix(nrow = num_folds, ncol = num_measures)
+# error_mat_rf = matrix(nrow = num_folds, ncol = num_measures)
+# error_mat_gbm = matrix(nrow = num_folds, ncol = num_measures)
 
 # Doing pre-processing of neural networks
 if(dim(final_data)[3] > 1){
@@ -127,7 +128,7 @@ for (i in 1:num_folds) {
   ################## 
   # Splitting data #
   ##################
-  
+
   # Test and train
   train_x = fdata_obj[-fold_ind[[i]],]
   test_x = fdata_obj[fold_ind[[i]],]
@@ -158,7 +159,7 @@ for (i in 1:num_folds) {
   confusion_fpc = confusionMatrix(as.factor(final_pred_pc), as.factor(test_y))
   
   # Functional Principal Component Regression (2nd Deriv Penalization)
-  func_pc2 = fregre.pc.cv(train_x, train_y, 3, lambda=TRUE, P=c(0,0,1))
+  func_pc2 = fregre.pc.cv(train_x, train_y, 4, lambda=TRUE, P=c(0,0,1))
   pred_pc2 = round(predict(func_pc2$fregre.pc, test_x))
   final_pred_pc2 = ifelse(pred_pc2 < min(test_y), min(test_y), ifelse(pred_pc2 > max(test_y), max(test_y), pred_pc2))
   confusion_fpc2 = confusionMatrix(as.factor(final_pred_pc2), as.factor(test_y))
@@ -193,136 +194,132 @@ for (i in 1:num_folds) {
   # Running multivariate models     #
   ###################################
   
-  # Setting up MV data
-  MV_train = as.data.frame(full_df[-fold_ind[[i]],])
-  MV_test = as.data.frame(full_df[fold_ind[[i]],])
-  colnames(MV_train) = paste0("v", gsub(" ", "_", colnames(MV_train)))
-  colnames(MV_test) = paste0("v", gsub(" ", "_", colnames(MV_test)))
-  train_y = resp[-fold_ind[[i]]]
-  test_y = resp[fold_ind[[i]]]
-  
-  # Running glm
-  fit_glm = glm(as.factor(train_y) ~ ., data = MV_train, family = "binomial")
-  glm_pred = round(predict(fit_glm, newdata = MV_test, type = "response"))
-  final_pred_glm = ifelse(glm_pred < min(test_y), min(test_y), ifelse(glm_pred > max(test_y), max(test_y), glm_pred))
-  confusion_glm = confusionMatrix(as.factor(final_pred_glm), as.factor(test_y))
-  
-  # Running rf
-  
-  # Creating grid to tune over
-  tuning_par <- expand.grid(c(seq(1, ncol(full_df), round(ncol(full_df)*0.5))), c(4, 6, 8))
-  colnames(tuning_par) <- c("mtry", "nodesize")
-  
-  # Parallel applying
-  plan(multiprocess, workers = 8)
-  
-  # Running through apply
-  tuning_rf <- future_apply(tuning_par, 1, function(x){
-    
-    # Running Cross Validations
-    rf_model <- randomForest(as.factor(train_y) ~ ., 
-                             data = MV_train,
-                             mtry = x[1],
-                             nodesize = x[2])
-    
-    # Getting predictions
-    sMSE = mean(((as.numeric(predict(rf_model)) - 1) - train_y)^2)
-    
-    # Putting together
-    df_returned <- data.frame(mtry = x[1], nodeisze = x[2], sMSE = sMSE)
-    rownames(df_returned) <- NULL
-    
-    # Returning
-    return(df_returned)
-    
-  })
-  
-  # Putting together results
-  tuning_rf_results <- do.call(rbind, tuning_rf)
-  
-  # Saving Errors
-  sMSE_rf_best <- tuning_rf_results[which.min(tuning_rf_results$sMSE), 3]
-  
-  # Fitting model
-  final_rf <- randomForest(as.factor(train_y) ~ ., data = MV_train,
-                           mtry = tuning_rf_results[which.min(tuning_rf_results$sMSE), 1],
-                           nodesize = tuning_rf_results[which.min(tuning_rf_results$sMSE), 2])
-  
-  # Getting results
-  rf_pred = predict(final_rf, newdata = MV_test, type = "response")
-  confusion_rf = confusionMatrix(rf_pred, as.factor(test_y))
-  
-  # Fitting gradient boosted trees
-  
-  # Building model
-  gbm_model <- gbm(data = MV_train, 
-                   as.factor(train_y) ~ ., 
-                   distribution="gaussian", 
-                   n.trees = 1000, 
-                   interaction.depth = 5, 
-                   shrinkage = 0.01, 
-                   bag.fraction = 0.7,
-                   n.minobsinnode = 11)
-  
-  # Tuned Model Prediction
-  predicted_gbm <- round(predict(gbm_model, newdata = MV_test, n.trees=gbm_model$n.trees, type = "response")) - 1
-  confusion_gbm = confusionMatrix(as.factor(predicted_gbm), as.factor(test_y))
-  
-  # Running svm
-  fit_svm = svm.model <- svm(as.factor(train_y) ~ ., data = MV_train)
-  svm_pred = predict(fit_svm, newdata = MV_test, type = "response")
-  confusion_svm = confusionMatrix(svm_pred, as.factor(test_y))
-  
-  # Running NN
-  
-  # Setting up FNN model
-  model_nn <- keras_model_sequential()
-  model_nn %>% 
-    layer_dense(units = 128, activation = 'relu') %>%
-    layer_dense(units = 32, activation = 'relu') %>%
-    layer_dense(units = length(unique(resp)), activation = 'softmax')
-  
-  # Setting parameters for FNN model
-  model_nn %>% compile(
-    optimizer = optimizer_adam(lr = 0.001), 
-    loss = 'sparse_categorical_crossentropy',
-    metrics = c('accuracy')
-  )
-  
-  # Early stopping
-  early_stop <- callback_early_stopping(monitor = "val_loss", patience = 15)
-  
-  # Training FNN model
-  model_nn %>% fit(as.matrix(MV_train), 
-                   train_y, 
-                   epochs = 150,  
-                   validation_split = 0.2,
-                   callbacks = list(early_stop),
-                   verbose = 0)
-  
-  # Predictions
-  test_predictions <- model_nn %>% predict(as.matrix(MV_test))
-  preds = apply(test_predictions, 1, function(x){return(which.max(x))}) - 1
-  
-  # Plotting
-  confusion_nn = confusionMatrix(as.factor(preds), as.factor(test_y))
-  
-  print("Done: Multivariate Modelling")
+  # # Setting up MV data
+  # MV_train = as.data.frame(full_df[-fold_ind[[i]],])
+  # MV_test = as.data.frame(full_df[fold_ind[[i]],])
+  # colnames(MV_train) = paste0("v", gsub(" ", "_", colnames(MV_train)))
+  # colnames(MV_test) = paste0("v", gsub(" ", "_", colnames(MV_test)))
+  # train_y = resp[-fold_ind[[i]]]
+  # test_y = resp[fold_ind[[i]]]
+  # 
+  # # Running glm
+  # fit_glm = glm(as.factor(train_y) ~ ., data = MV_train, family = "binomial")
+  # glm_pred = round(predict(fit_glm, newdata = MV_test, type = "response"))
+  # final_pred_glm = ifelse(glm_pred < min(test_y), min(test_y), ifelse(glm_pred > max(test_y), max(test_y), glm_pred))
+  # confusion_glm = confusionMatrix(as.factor(final_pred_glm), as.factor(test_y))
+  # 
+  # # Running rf
+  # 
+  # # Creating grid to tune over
+  # tuning_par <- expand.grid(c(seq(1, ncol(full_df), round(ncol(full_df)*0.5))), c(4, 6, 8))
+  # colnames(tuning_par) <- c("mtry", "nodesize")
+  # 
+  # # Parallel applying
+  # # plan(multiprocess, workers = 8)
+  # 
+  # # Running through apply
+  # tuning_rf <- apply(tuning_par, 1, function(x){
+  #   
+  #   # Running Cross Validations
+  #   rf_model <- randomForest(as.factor(train_y) ~ ., 
+  #                            data = MV_train,
+  #                            mtry = x[1],
+  #                            nodesize = x[2])
+  #   
+  #   # Getting predictions
+  #   sMSE = mean(((as.numeric(predict(rf_model)) - 1) - train_y)^2)
+  #   
+  #   # Putting together
+  #   df_returned <- data.frame(mtry = x[1], nodeisze = x[2], sMSE = sMSE)
+  #   rownames(df_returned) <- NULL
+  #   
+  #   # Returning
+  #   return(df_returned)
+  #   
+  # })
+  # 
+  # # Putting together results
+  # tuning_rf_results <- do.call(rbind, tuning_rf)
+  # 
+  # # Saving Errors
+  # sMSE_rf_best <- tuning_rf_results[which.min(tuning_rf_results$sMSE), 3]
+  # 
+  # # Fitting model
+  # final_rf <- randomForest(as.factor(train_y) ~ ., data = MV_train,
+  #                          mtry = tuning_rf_results[which.min(tuning_rf_results$sMSE), 1],
+  #                          nodesize = tuning_rf_results[which.min(tuning_rf_results$sMSE), 2])
+  # 
+  # # Getting results
+  # rf_pred = predict(final_rf, newdata = MV_test, type = "response")
+  # confusion_rf = confusionMatrix(rf_pred, as.factor(test_y))
+  # 
+  # # Fitting gradient boosted trees
+  # 
+  # # Building model
+  # gbm_model <- gbm(data = MV_train, 
+  #                  as.factor(train_y) ~ ., 
+  #                  distribution="gaussian", 
+  #                  n.trees = 1000, 
+  #                  interaction.depth = 5, 
+  #                  shrinkage = 0.01, 
+  #                  bag.fraction = 0.7,
+  #                  n.minobsinnode = 11)
+  # 
+  # # Tuned Model Prediction
+  # predicted_gbm <- round(predict(gbm_model, newdata = MV_test, n.trees=gbm_model$n.trees, type = "response")) - 1
+  # confusion_gbm = confusionMatrix(as.factor(predicted_gbm), as.factor(test_y))
+  # 
+  # # Running svm
+  # fit_svm = svm.model <- svm(as.factor(train_y) ~ ., data = MV_train)
+  # svm_pred = predict(fit_svm, newdata = MV_test, type = "response")
+  # confusion_svm = confusionMatrix(svm_pred, as.factor(test_y))
+  # 
+  # # Running NN
+  # 
+  # # Setting up FNN model
+  # model_nn <- keras_model_sequential()
+  # model_nn %>% 
+  #   layer_dense(units = 128, activation = 'relu') %>%
+  #   layer_dense(units = 32, activation = 'relu') %>%
+  #   layer_dense(units = length(unique(resp)), activation = 'softmax')
+  # 
+  # # Setting parameters for FNN model
+  # model_nn %>% compile(
+  #   optimizer = optimizer_adam(lr = 0.001), 
+  #   loss = 'sparse_categorical_crossentropy',
+  #   metrics = c('accuracy')
+  # )
+  # 
+  # # Early stopping
+  # early_stop <- callback_early_stopping(monitor = "val_loss", patience = 15)
+  # 
+  # # Training FNN model
+  # model_nn %>% fit(as.matrix(MV_train), 
+  #                  train_y, 
+  #                  epochs = 150,  
+  #                  validation_split = 0.2,
+  #                  callbacks = list(early_stop),
+  #                  verbose = 0)
+  # 
+  # # Predictions
+  # test_predictions <- model_nn %>% predict(as.matrix(MV_test))
+  # preds = apply(test_predictions, 1, function(x){return(which.max(x))}) - 1
+  # 
+  # # Plotting
+  # confusion_nn = confusionMatrix(as.factor(preds), as.factor(test_y))
+  # 
+  # print("Done: Multivariate Modelling")
   
   #####################################
   # Running Functional Neural Network #
   #####################################
   
-  
   # Setting up FNN model
   model_fnn <- keras_model_sequential()
   model_fnn %>% 
-    layer_dense(units = 128, activation = "relu") %>%
-    layer_dense(units = 64,
-                activation = "relu") %>%
-    layer_dropout(0.4) %>%
-    layer_dense(units = 128,
-                activation = "sigmoid") %>%
+    layer_dense(units = 64, activation = "relu") %>%
+    layer_dense(units = 32, activation = "relu") %>%
+    layer_dense(units = 32, activation = "relu") %>%
     layer_dense(units = length(unique(resp)), activation = 'softmax')
   
   
@@ -365,11 +362,11 @@ for (i in 1:num_folds) {
   error_mat_pls2[i, ] = c(confusion_pls2$overall[1], confusion_pls2$byClass[c(1, 2, 3, 4)])
   error_mat_np[i, ] = c(confusion_np$overall[1], confusion_np$byClass[c(1, 2, 3, 4)])
   error_mat_fnn[i, ] = c(confusion_fnn$overall[1], confusion_fnn$byClass[c(1, 2, 3, 4)])
-  error_mat_svm[i, ] = c(confusion_svm$overall[1], confusion_svm$byClass[c(1, 2, 3, 4)])
-  error_mat_nn[i, ] = c(confusion_nn$overall[1], confusion_nn$byClass[c(1, 2, 3, 4)])
-  error_mat_glm[i, ] = c(confusion_glm$overall[1], confusion_glm$byClass[c(1, 2, 3, 4)])
-  error_mat_rf[i, ] = c(confusion_rf$overall[1], confusion_rf$byClass[c(1, 2, 3, 4)])
-  error_mat_gbm[i, ] = c(confusion_gbm$overall[1], confusion_gbm$byClass[c(1, 2, 3, 4)])
+  # error_mat_svm[i, ] = c(confusion_svm$overall[1], confusion_svm$byClass[c(1, 2, 3, 4)])
+  # error_mat_nn[i, ] = c(confusion_nn$overall[1], confusion_nn$byClass[c(1, 2, 3, 4)])
+  # error_mat_glm[i, ] = c(confusion_glm$overall[1], confusion_glm$byClass[c(1, 2, 3, 4)])
+  # error_mat_rf[i, ] = c(confusion_rf$overall[1], confusion_rf$byClass[c(1, 2, 3, 4)])
+  # error_mat_gbm[i, ] = c(confusion_gbm$overall[1], confusion_gbm$byClass[c(1, 2, 3, 4)])
   
   # Resetting things
   K <- backend()
@@ -392,16 +389,16 @@ Final_Table[4, ] = c(colMeans(error_mat_pc2, na.rm = T), sd(error_mat_pc2[,1]))
 Final_Table[5, ] = c(colMeans(error_mat_pc3, na.rm = T), sd(error_mat_pc3[,1]))
 Final_Table[6, ] = c(colMeans(error_mat_pls1, na.rm = T), sd(error_mat_pls1[,1]))
 Final_Table[7, ] = c(colMeans(error_mat_pls2, na.rm = T), sd(error_mat_pls2[,1]))
-Final_Table[8, ] = c(colMeans(error_mat_svm, na.rm = T), sd(error_mat_svm[,1]))
-Final_Table[9, ] = c(colMeans(error_mat_nn, na.rm = T), sd(error_mat_nn[,1]))
-Final_Table[10, ] = c(colMeans(error_mat_glm, na.rm = T), sd(error_mat_glm[,1]))
-Final_Table[11, ] = c(colMeans(error_mat_rf, na.rm = T), sd(error_mat_rf[,1]))
-Final_Table[12, ] = c(colMeans(error_mat_gbm, na.rm = T), sd(error_mat_gbm[,1]))
-Final_Table[13, ] = c(colMeans(error_mat_fnn, na.rm = T), sd(error_mat_fnn[,1]))
+# Final_Table[8, ] = c(colMeans(error_mat_svm, na.rm = T), sd(error_mat_svm[,1]))
+# Final_Table[9, ] = c(colMeans(error_mat_nn, na.rm = T), sd(error_mat_nn[,1]))
+# Final_Table[10, ] = c(colMeans(error_mat_glm, na.rm = T), sd(error_mat_glm[,1]))
+# Final_Table[11, ] = c(colMeans(error_mat_rf, na.rm = T), sd(error_mat_rf[,1]))
+# Final_Table[12, ] = c(colMeans(error_mat_gbm, na.rm = T), sd(error_mat_gbm[,1]))
+Final_Table[8, ] = c(colMeans(error_mat_fnn, na.rm = T), sd(error_mat_fnn[,1]))
 
 # Editing names
 rownames(Final_Table) = c("FLM", "FNP", "FPC_1", "FPC_2", "FPC_3", "FPLS_1", "FPLS_2",
-                          "SVM", "NN", "GLM", "RF", "GBM", "FNN")
+                           "FNN")
 colnames(Final_Table) = c("Error", "Sensitivity", "Specificity", "Positive Rate", "Negative Rate", "SD_Error")
 
 # Looking at results

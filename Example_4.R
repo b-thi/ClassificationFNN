@@ -1,7 +1,7 @@
 #################################
 # FNNs Classification Paper     #
 #                               #
-# Example 1 code for JSS paper  #
+# Example 4 code for paper      # 
 #                               #
 # Barinder Thind, Jiguo Cao     #
 #################################
@@ -27,9 +27,9 @@ K$clear_session()
 options(warn=-1)
 
 # Setting seeds
-set.seed(2022)
+set.seed(1919)
 use_session_with_seed(
-  2022,
+  1919,
   disable_gpu = F,
   disable_parallel_cpu = F,
   quiet = T
@@ -96,6 +96,30 @@ error_mat_glm = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_rf = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_gbm = matrix(nrow = num_folds, ncol = num_measures)
 
+# Doing pre-processing of neural networks
+if(dim(final_data)[3] > 1){
+  # Now, let's pre-process
+  pre_dat = FNN_Preprocess(func_cov = final_data,
+                           basis_choice = c("fourier", "fourier", "fourier"),
+                           num_basis = c(5, 7, 9),
+                           domain_range = list(c(min(timepts), max(timepts)), 
+                                               c(min(timepts), max(timepts)), 
+                                               c(min(timepts), max(timepts))),
+                           covariate_scaling = T,
+                           raw_data = F)
+  
+} else {
+  
+  # Now, let's pre-process
+  pre_dat = FNN_Preprocess(func_cov = final_data,
+                           basis_choice = c("fourier"),
+                           num_basis = c(5),
+                           domain_range = list(c(min(timepts), max(timepts))),
+                           covariate_scaling = T,
+                           raw_data = F)
+}
+
+
 
 # Looping to get results
 for (i in 1:num_folds) {
@@ -111,17 +135,8 @@ for (i in 1:num_folds) {
   test_y = resp[fold_ind[[i]]]
   
   # Setting up for FNN
-  if(dim(final_data)[3] == 1){
-    data_train = array(dim = c(nbasis, nrow(train_x$data), 1))
-    data_test = array(dim = c(nbasis, nrow(test_x$data), 1))
-    data_train[,,1] = final_data[, -fold_ind[[i]], ]
-    data_test[,,1] = final_data[, fold_ind[[i]], ]
-  } else {
-    data_train = array(dim = c(nbasis, nrow(train_x$data), dim(final_data)[3]))
-    data_test = array(dim = c(nbasis, nrow(test_x$data), dim(final_data)[3]))
-    data_train = final_data[, -fold_ind[[i]], ]
-    data_test = final_data[, fold_ind[[i]], ]
-  }
+  pre_train = pre_dat$data[-fold_ind[[i]], ]
+  pre_test = pre_dat$data[fold_ind[[i]], ]
   
   
   ###################################
@@ -135,7 +150,7 @@ for (i in 1:num_folds) {
   pred_basis = round(predict(func_basis[[1]], test_x))
   final_pred_basis = ifelse(pred_basis < min(test_y), min(test_y), ifelse(pred_basis > max(test_y), max(test_y), pred_basis))
   confusion_flm = confusionMatrix(as.factor(final_pred_basis), as.factor(test_y))
-  ?fregre.basis
+  
   # Functional Principal Component Regression (No Penalty)
   func_pc = fregre.pc.cv(train_x, train_y, 8)
   pred_pc = round(predict(func_pc$fregre.pc, test_x))
@@ -298,43 +313,6 @@ for (i in 1:num_folds) {
   # Running Functional Neural Network #
   #####################################
   
-  if(dim(data_train)[3] > 1){
-    # Now, let's pre-process
-    pre_train = FNN_Preprocess(func_cov = data_train,
-                               basis_choice = c("fourier", "fourier", "fourier"),
-                               num_basis = c(5, 7, 9),
-                               domain_range = list(c(min(timepts), max(timepts)), 
-                                                   c(min(timepts), max(timepts)), 
-                                                   c(min(timepts), max(timepts))),
-                               covariate_scaling = T,
-                               raw_data = F)
-    
-    pre_test = FNN_Preprocess(func_cov = data_test,
-                              basis_choice = c("fourier", "fourier", "fourier"),
-                              num_basis = c(5, 7, 9),
-                              domain_range = list(c(min(timepts), max(timepts)), 
-                                                  c(min(timepts), max(timepts)), 
-                                                  c(min(timepts), max(timepts))),
-                              covariate_scaling = T,
-                              raw_data = F)
-  } else {
-    
-    # Now, let's pre-process
-    pre_train = FNN_Preprocess(func_cov = data_train,
-                               basis_choice = c("fourier"),
-                               num_basis = c(5),
-                               domain_range = list(c(min(timepts), max(timepts))),
-                               covariate_scaling = T,
-                               raw_data = F)
-    
-    pre_test = FNN_Preprocess(func_cov = data_test,
-                              basis_choice = c("fourier"),
-                              num_basis = c(5),
-                              domain_range = list(c(min(timepts), max(timepts))),
-                              covariate_scaling = T,
-                              raw_data = F)
-  }
-  
   
   # Setting up FNN model
   model_fnn <- keras_model_sequential()
@@ -360,7 +338,7 @@ for (i in 1:num_folds) {
   early_stop <- callback_early_stopping(monitor = "val_loss", patience = 15)
   
   # Training FNN model
-  model_fnn %>% fit(pre_train$data, 
+  model_fnn %>% fit(pre_train, 
                     train_y, 
                     epochs = 300,  
                     validation_split = 0.2,
@@ -368,11 +346,11 @@ for (i in 1:num_folds) {
                     verbose = 0)
   
   # Predictions
-  test_predictions <- model_fnn %>% predict(pre_test$data)
-  preds = apply(test_predictions, 1, function(x){return(which.max(x))}) - 1
+  test_predictions <- model_fnn %>% predict(pre_test)
+  preds_fnn = apply(test_predictions, 1, function(x){return(which.max(x))}) - 1
   
   # Plotting
-  confusion_fnn = confusionMatrix(as.factor(preds), as.factor(test_y))
+  confusion_fnn = confusionMatrix(as.factor(preds_fnn), as.factor(test_y))
   
   print("Done: FNN Modelling")
   
