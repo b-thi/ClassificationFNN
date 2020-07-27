@@ -31,17 +31,18 @@ use_session_with_seed(
 )
 
 # Loading data
-data(phoneme)
+df_train = read.table("fungi/fungi_TRAIN.txt", as.is = T, header = F)
+df_test = read.table("fungi/fungi_TEST.txt", as.is = T, header = F)
 
 # Combining data
-full_resp = as.vector(c(phoneme$classlearn, phoneme$classtest)) - 1
-full_df = rbind(phoneme$learn$data, phoneme$test$data)
+full_resp = c(df_train[,1], df_test[,1]) - 1
+full_df = rbind(df_train[,-1], df_test[,-1])
 
 # Making classification bins
 resp = full_resp
 
 # define the time points on which the functional predictor is observed. 
-timepts = seq(1, 150, 1)
+timepts = seq(1, 201, 1)
 
 # define the fourier basis 
 nbasis = 65
@@ -70,15 +71,6 @@ num_folds = 2
 # Creating folds
 fold_ind = createFolds(resp, k = num_folds)
 
-# numbr of models
-num_models = 13
-
-# number of measures
-num_measures = 5
-
-# Initializing matrices for results
-error_mat_fnn = matrix(nrow = num_folds, ncol = num_measures)
-
 # Setting index
 i = 1
 
@@ -105,9 +97,9 @@ if(dim(final_data)[3] == 1){
   data_test = final_data[, fold_ind[[i]], ]
 }
 
-#####################################
-# Running Functional Neural Network #
-#####################################
+############################################
+# Running Functional Neural Network Tuning #
+############################################
 
 if(dim(data_train)[3] > 1){
   # Now, let's pre-process
@@ -153,6 +145,7 @@ FLAGS <- flags(
   flag_integer('neurons2', 128),
   flag_integer('neurons3', 128),
   flag_numeric('lr', 0.001),
+  flag_numeric('l2', 0.01),
   flag_string("activation1", "relu"),
   flag_string("activation2", "relu"),
   flag_string("activation3", "relu")
@@ -161,10 +154,11 @@ FLAGS <- flags(
 # Grid to search over
 par <- list(
   dropout1 = c(0.3,0.4,0.5,0.6),
-  neurons1 = c(64,128,256),
-  neurons2 = c(64,128,256),
-  neurons3 = c(64,128,256),
-  lr = c(0.005,0.0005,0.001,0.01),
+  neurons1 = c(32,64,128),
+  neurons2 = c(32,64,128),
+  neurons3 = c(32,64,128),
+  lr = c(0.005,0.0005,0.001,0.01, 0.1),
+  l2 = c(0.0001,0.001,0.01),
   activation1 = c("relu", "sigmoid"),
   activation2 = c("relu", "sigmoid"),
   activation3 = c("relu", "sigmoid")
@@ -174,7 +168,8 @@ par <- list(
 model_fnn <- keras_model_sequential()
 model_fnn %>% 
   layer_dense(units = FLAGS$neurons1,
-              activation = FLAGS$activation1) %>%
+              activation = FLAGS$activation1,
+              regularizer_l2(l = FLAGS$l2)) %>%
   layer_dense(units = FLAGS$neurons2,
               activation = FLAGS$activation2) %>%
   layer_dropout(FLAGS$dropout1) %>%
@@ -190,12 +185,14 @@ model_fnn %>% compile(
 )
 
 # Running model tuning
-runs = tuning_run('tuning_run_file.R', runs_dir = '_tuning_phoneme', sample = 0.01, flags = par)
+runs = tuning_run('tuning_run_file.R', runs_dir = '_tuning_fungi', sample = 0.005, flags = par)
 
 # Getting best run
-all_runs = ls_runs(order = metric_val_loss, decreasing= F, runs_dir = '_tuning')
-write.csv(all_runs, "phoneme_tuning.csv", row.names = F)
+all_runs = ls_runs(order = metric_val_loss, decreasing= F, runs_dir = '_tuning_worm')
+saveRDS(all_runs, file = "sim1_tuning.RData")
 best_run = ls_runs(order = metric_val_loss, decreasing= F, runs_dir = '_tuning')[1,]
+
+all_runs$
 
 # Getting best model run
 run <- training_run('nn_ht.R',flags = list(
