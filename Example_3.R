@@ -3,7 +3,7 @@
 #                               #
 # Example 3 code for paper      #
 #                               #
-# Barinder Thind, Jiguo Cao     #
+# Anonymized                    #
 #################################
 
 # Libraries
@@ -19,7 +19,7 @@ library(randomForest)
 library(e1071)
 library(gbm)
 library(stringr)
-source("fnn_preprocess.R")
+source("FNN_FunctionsFile.R")
 
 # Clearing backend
 K <- backend()
@@ -34,16 +34,6 @@ use_session_with_seed(
   disable_parallel_cpu = F,
   quiet = T
 )
-
-# # Combining data
-# full_resp = range01(gasoline[,1])
-# full_df = gasoline[,-1]
-# 
-# # Making classification bins
-# resp = ifelse(full_resp > 0.5, 1, 0)
-# 
-# # define the time points on which the functional predictor is observed. 
-# timepts = seq(900, 1700, 2)
 
 # Loading data
 load("OJ.RData")
@@ -73,8 +63,8 @@ func_cov_2 = deriv1$coefs
 func_cov_3 = deriv2$coefs
 final_data = array(dim = c(nbasis, nrow(full_df), 1))
 final_data[,,1] = func_cov_1
-final_data[,,2] = func_cov_2
-final_data[,,3] = func_cov_3
+# final_data[,,2] = func_cov_2
+# final_data[,,3] = func_cov_3
 
 # fData Object
 fdata_obj = fdata(full_df, argvals = timepts, rangeval = c(min(timepts), max(timepts)))
@@ -86,7 +76,7 @@ num_folds = 5
 fold_ind = createFolds(resp, k = num_folds)
 
 # numbr of models
-num_models = 13
+num_models = 14
 
 # number of measures
 num_measures = 5
@@ -104,6 +94,7 @@ error_mat_svm = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_nn = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_glm = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_rf = matrix(nrow = num_folds, ncol = num_measures)
+error_mat_fglm = matrix(nrow = num_folds, ncol = num_measures)
 error_mat_gbm = matrix(nrow = num_folds, ncol = num_measures)
 
 # Doing pre-processing of neural networks
@@ -123,19 +114,23 @@ if(dim(final_data)[3] > 1){
   # Now, let's pre-process
   pre_dat = FNN_Preprocess(func_cov = final_data,
                            basis_choice = c("fourier"),
-                           num_basis = c(5),
+                           num_basis = c(15),
                            domain_range = list(c(min(timepts), max(timepts))),
                            covariate_scaling = T,
                            raw_data = F)
 }
 
+
+# Functional weights
+func_weights = matrix(nrow = num_folds, ncol = 15)
+
 # Looping to get results
 for (i in 1:num_folds) {
-
+  
   ################## 
   # Splitting data #
   ##################
-
+  
   # Test and train
   train_x = fdata_obj[-fold_ind[[i]],]
   test_x = fdata_obj[fold_ind[[i]],]
@@ -146,21 +141,35 @@ for (i in 1:num_folds) {
   pre_train = pre_dat$data[-fold_ind[[i]], ]
   pre_test = pre_dat$data[fold_ind[[i]], ]
   
+  # Setting up for GLM
+  ldata = list("x" = train_x, "df" = as.data.frame(train_y))
   
   ###################################
   # Running usual functional models #
   ###################################
   
-  # Functional Linear Model (Basis)
-  l=4^(9:11)
+  # Functional GLM
+  model_fglm = classif.glm(train_y ~ x, data = ldata)
+  pred_fglm = predict(model_fglm, new.fdataobj = test_x)
+  confusion_gflm = confusionMatrix(as.factor(pred_fglm), as.factor(test_y))
+  
+  # 
+  # # Functional GAMs
+  # model_fGAM = classif.gsam(train_y ~ s(x), data = ldata)
+  # pred_fGAM = predict(model_fGAM, new.fdataobj = test_x)
+  # confusion_fGAM = confusionMatrix(as.factor(pred_fGAM), as.factor(test_y))
+  # 
+  
+  #  Functional Linear Model (Basis)
+  l=2^(-2:8)
   func_basis = fregre.basis.cv(train_x, train_y, type.basis = "fourier",
-                               lambda=l, type.CV = GCV.S, par.CV = list(trim=0.2))
+                               lambda=l, type.CV = GCV.S, par.CV = list(trim=0.15))
   pred_basis = round(predict(func_basis[[1]], test_x))
   final_pred_basis = ifelse(pred_basis < min(test_y), min(test_y), ifelse(pred_basis > max(test_y), max(test_y), pred_basis))
   confusion_flm = confusionMatrix(as.factor(final_pred_basis), as.factor(test_y))
   
   # Functional Principal Component Regression (No Penalty)
-  func_pc = fregre.pc.cv(train_x, train_y, 1)
+  func_pc = fregre.pc.cv(train_x, train_y, 8)
   pred_pc = round(predict(func_pc$fregre.pc, test_x))
   final_pred_pc = ifelse(pred_pc < min(test_y), min(test_y), ifelse(pred_pc > max(test_y), max(test_y), pred_pc))
   confusion_fpc = confusionMatrix(as.factor(final_pred_pc), as.factor(test_y))
@@ -172,7 +181,7 @@ for (i in 1:num_folds) {
   confusion_fpc2 = confusionMatrix(as.factor(final_pred_pc2), as.factor(test_y))
   
   # Functional Principal Component Regression (Ridge Regression)
-  func_pc3 = fregre.pc.cv(train_x, train_y, 1:2)
+  func_pc3 = fregre.pc.cv(train_x, train_y, 1:8, lambda=TRUE, P=1)
   pred_pc3 = round(predict(func_pc3$fregre.pc, test_x))
   final_pred_pc3 = ifelse(pred_pc3 < min(test_y), min(test_y), ifelse(pred_pc3 > max(test_y), max(test_y), pred_pc3))
   confusion_fpc3 = confusionMatrix(as.factor(final_pred_pc3), as.factor(test_y))
@@ -222,10 +231,10 @@ for (i in 1:num_folds) {
   colnames(tuning_par) <- c("mtry", "nodesize")
   
   # Parallel applying
-  # plan(multiprocess, workers = 8)
+  plan(multiprocess, workers = 8)
   
   # Running through apply
-  tuning_rf <- apply(tuning_par, 1, function(x){
+  tuning_rf <- future_apply(tuning_par, 1, function(x){
     
     # Running Cross Validations
     rf_model <- randomForest(as.factor(train_y) ~ ., 
@@ -283,16 +292,26 @@ for (i in 1:num_folds) {
   
   # Running NN
   
+  # Setting seeds
+  set.seed(i)
+  use_session_with_seed(
+    i,
+    disable_gpu = F,
+    disable_parallel_cpu = F,
+    quiet = T
+  )
+  
   # Setting up FNN model
   model_nn <- keras_model_sequential()
   model_nn %>% 
-    layer_dense(units = 128, activation = 'relu') %>%
-    layer_dense(units = 32, activation = 'relu') %>%
+    layer_dense(units = 128, activation = 'sigmoid') %>%
+    layer_dense(units = 32, activation = 'sigmoid') %>%
+    layer_dense(units = 64, activation = "relu") %>%
     layer_dense(units = length(unique(resp)), activation = 'softmax')
   
   # Setting parameters for FNN model
   model_nn %>% compile(
-    optimizer = optimizer_adam(lr = 0.001), 
+    optimizer = optimizer_adam(lr = 5e-03), 
     loss = 'sparse_categorical_crossentropy',
     metrics = c('accuracy')
   )
@@ -320,6 +339,15 @@ for (i in 1:num_folds) {
   #####################################
   # Running Functional Neural Network #
   #####################################
+  
+  # Setting seeds
+  set.seed(i)
+  use_session_with_seed(
+    i,
+    disable_gpu = F,
+    disable_parallel_cpu = F,
+    quiet = T
+  )
   
   # Setting up FNN model
   model_fnn <- keras_model_sequential()
@@ -359,6 +387,9 @@ for (i in 1:num_folds) {
   # Plotting
   confusion_fnn = confusionMatrix(as.factor(preds_fnn), as.factor(test_y))
   
+  # Storing weights
+  func_weights[i,] = rowMeans(get_weights(model_fnn)[[1]])
+  
   print("Done: FNN Modelling")
   
   ###################
@@ -378,6 +409,7 @@ for (i in 1:num_folds) {
   error_mat_glm[i, ] = c(confusion_glm$overall[1], confusion_glm$byClass[c(1, 2, 3, 4)])
   error_mat_rf[i, ] = c(confusion_rf$overall[1], confusion_rf$byClass[c(1, 2, 3, 4)])
   error_mat_gbm[i, ] = c(confusion_gbm$overall[1], confusion_gbm$byClass[c(1, 2, 3, 4)])
+  error_mat_fglm[i, ] = c(confusion_gflm$overall[1], confusion_gflm$byClass[c(1, 2, 3, 4)])
   
   # Resetting things
   K <- backend()
@@ -405,12 +437,13 @@ Final_Table[9, ] = c(colMeans(error_mat_nn, na.rm = T), sd(error_mat_nn[,1]))
 Final_Table[10, ] = c(colMeans(error_mat_glm, na.rm = T), sd(error_mat_glm[,1]))
 Final_Table[11, ] = c(colMeans(error_mat_rf, na.rm = T), sd(error_mat_rf[,1]))
 Final_Table[12, ] = c(colMeans(error_mat_gbm, na.rm = T), sd(error_mat_gbm[,1]))
-Final_Table[13, ] = c(colMeans(error_mat_fnn, na.rm = T), sd(error_mat_fnn[,1]))
+Final_Table[13, ] = c(colMeans(error_mat_fglm, na.rm = T), sd(error_mat_fglm[,1]))
+Final_Table[14, ] = c(colMeans(error_mat_fnn, na.rm = T), sd(error_mat_fnn[,1]))
 
 # Editing names
 rownames(Final_Table) = c("FLM", "FNP", "FPC_1", "FPC_2", "FPC_3", "FPLS_1", "FPLS_2",
-                          "SVM", "NN", "GLM", "RF", "GBM", "FNN")
-colnames(Final_Table) = c("Error", "Sensitivity", "Specificity", "Positive Rate", "Negative Rate", "SD_Error")
+                          "SVM", "NN", "GLM", "RF", "GBM", "fGLM", "FNN")
+colnames(Final_Table) = c("Accuracy", "Sensitivity", "Specificity", "PPV", "NPV", "SD_Error")
 
 # Looking at results
 Final_Table
@@ -442,37 +475,37 @@ beta_coef_lm <- data.frame(time = timepts,
 #######################################
 
 # Running FNN for weather
-fnn_final = FNN(resp = resp, 
-                func_cov = final_data, 
-                scalar_cov = NULL,
-                basis_choice = c("fourier", "fourier", "fourier"), 
-                num_basis = c(5, 7, 9),
-                hidden_layers = 2,
-                neurons_per_layer = c(16, 8),
-                activations_in_layers = c("relu", "sigmoid"),
-                domain_range = list(c(min(timepts), max(timepts)), 
-                                    c(min(timepts), max(timepts)), 
-                                    c(min(timepts), max(timepts))),
-                epochs = 250,
-                output_size = 1,
-                loss_choice = "mse",
-                metric_choice = list("mean_squared_error"),
-                val_split = 0.2,
-                patience_param = 25,
-                learn_rate = 0.05,
-                early_stop = T,
-                print_info = F)
+# fnn_final = FNN(resp = resp, 
+#                 func_cov = final_data, 
+#                 scalar_cov = NULL,
+#                 basis_choice = c("fourier", "fourier", "fourier"), 
+#                 num_basis = c(5, 7, 9),
+#                 hidden_layers = 2,
+#                 neurons_per_layer = c(16, 8),
+#                 activations_in_layers = c("relu", "sigmoid"),
+#                 domain_range = list(c(min(timepts), max(timepts)), 
+#                                     c(min(timepts), max(timepts)), 
+#                                     c(min(timepts), max(timepts))),
+#                 epochs = 250,
+#                 output_size = 1,
+#                 loss_choice = "mse",
+#                 metric_choice = list("mean_squared_error"),
+#                 val_split = 0.2,
+#                 patience_param = 25,
+#                 learn_rate = 0.05,
+#                 early_stop = T,
+#                 print_info = F)
 
 # Getting the FNC
-coefficients_fnn = rowMeans(get_weights(fnn_final$model)[[1]])[1:5]
+# coefficients_fnn = rowMeans(get_weights(fnn_final$model)[[1]])[1:5]
 
 # Setting up data set
 beta_coef_fnn <- data.frame(time = timepts, 
-                            beta_evals = final_beta_fourier(timepts, scale(coefficients_fnn), range = c(min(timepts), max(timepts))))
+                            beta_evals = final_beta_fourier(timepts, scale(colMeans(func_weights)), range = c(min(timepts), max(timepts))))
 
 #### Putting Together #####
 beta_coef_fnn %>% 
-  ggplot(aes(x = time, y = -beta_evals, color = "blue")) +
+  ggplot(aes(x = time, y = -beta_evals, color = "red")) +
   geom_line(size = 1.5) +
   geom_line(data = beta_coef_lm, 
             aes(x = time, y = beta_evals, color = "black"),
@@ -485,7 +518,7 @@ beta_coef_fnn %>%
   theme(axis.text=element_text(size=14, face = "bold"),
         axis.title=element_text(size=14,face="bold")) +
   scale_colour_manual(name = 'Model: ', 
-                      values =c('black'='black','blue'='blue'), 
+                      values =c('black'='black','red'='red'), 
                       labels = c('Functional Linear Model', 'Functional Neural Network')) +
   theme(legend.background = element_rect(fill="lightblue",
                                          size=0.5, linetype="solid", 
@@ -496,20 +529,20 @@ beta_coef_fnn %>%
 
 
 beta_coef_fnn %>% 
-  ggplot(aes(x = time, y = -beta_evals, color = "blue")) +
+  ggplot(aes(x = time, y = beta_evals, color = "red")) +
   geom_line(size = 1.5) +
   geom_line(data = beta_coef_lm, 
             aes(x = time, y = beta_evals, color = "black"),
             size = 1.2,
             linetype = "dashed") + 
   theme_bw() +
-  xlab("Time") +
-  ylab("beta(t)") +
+  xlab("Transformed Wavelength") +
+  ylab("beta(w)") +
   theme(plot.title = element_text(hjust = 0.5)) +
   theme(axis.text=element_text(size=14, face = "bold"),
         axis.title=element_text(size=14,face="bold")) +
   scale_colour_manual(name = 'Model: ', 
-                      values =c('black'='black','blue'='blue'), 
+                      values =c('black'='black','red'='red'), 
                       labels = c('Functional Linear Model', 'Functional Neural Network')) +
   theme(legend.title = element_text(size = 14),
         legend.text = element_text(size = 12),
