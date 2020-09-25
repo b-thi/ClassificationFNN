@@ -343,6 +343,11 @@ for (j in 1:num_sims) {
 # Saving table
 write.table(final_results, file="sim2Pred_class.csv", row.names = F)
 
+# # Reading in data
+# final_results = data.frame(read.table("sim2Pred_class.csv",
+#                          as.is = T,
+#                          header = T))
+
 # Getting minimums
 # mspe_div_mins = apply(final_results, 1, function(x){return(min(x))})
 
@@ -385,7 +390,7 @@ plot2 <- ggplot(stack(df_MSPE), aes(x = ind, y = values)) +
   scale_y_continuous(limits = c(0, 1)) +
   theme(axis.text=element_text(size=14, face= "bold"),
         axis.title=element_text(size=14, face="bold")) +
-  geom_hline(yintercept = 1, linetype = "dashed")
+  geom_hline(yintercept = 0, linetype = "dashed")
 
 # Creating final table
 final_sim2_results = data.frame(Error = colMeans(final_results, na.rm = T),

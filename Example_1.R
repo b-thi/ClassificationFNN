@@ -453,22 +453,22 @@ Final_Table
 ### Functional Linear Model (Basis) ###
 
 # Setting up grid
-l=2^(-4:10)
-
-# Running functional linear model
-func_basis = fregre.basis.cv(fdata_obj, 
-                             resp, 
-                             type.basis = "fourier",
-                             lambda=l, 
-                             type.CV = GCV.S, 
-                             par.CV = list(trim=0.15))
-
-# Pulling out the coefficients
-coefficients_lm = func_basis$fregre.basis$coefficients
-
-# Setting up data set
-beta_coef_lm <- data.frame(time = timepts, 
-                           beta_evals = final_beta_fourier(timepts, scale(c(coefficients_lm[,1])), range = c(min(timepts), max(timepts))))
+# l=2^(-4:10)
+# 
+# # Running functional linear model
+# func_basis = fregre.basis.cv(fdata_obj, 
+#                              resp, 
+#                              type.basis = "fourier",
+#                              lambda=l, 
+#                              type.CV = GCV.S, 
+#                              par.CV = list(trim=0.15))
+# 
+# # Pulling out the coefficients
+# coefficients_lm = func_basis$fregre.basis$coefficients
+# 
+# # Setting up data set
+# beta_coef_lm <- data.frame(time = timepts, 
+#                            beta_evals = final_beta_fourier(timepts, scale(c(coefficients_lm[,1])), range = c(min(timepts), max(timepts))))
 
 #######################################
 
@@ -497,51 +497,51 @@ beta_coef_lm <- data.frame(time = timepts,
 # # Getting the FNC
 # coefficients_fnn = rowMeans(get_weights(fnn_final$model)[[1]])[1:5]
 
-# Setting up data set
-beta_coef_fnn <- data.frame(time = timepts, 
-                            beta_evals = final_beta_fourier(timepts, scale(colMeans(func_weights)), range = c(min(timepts), max(timepts))))
-
-#### Putting Together #####
-beta_coef_fnn %>% 
-  ggplot(aes(x = time, y = -beta_evals, color = "red")) +
-  geom_line(size = 1.5) +
-  geom_line(data = beta_coef_lm, 
-            aes(x = time, y = beta_evals, color = "black"),
-            size = 1.2,
-            linetype = "dashed") + 
-  theme_bw() +
-  xlab("Time") +
-  ylab("beta(t)") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  theme(axis.text=element_text(size=14, face = "bold"),
-        axis.title=element_text(size=14,face="bold")) +
-  scale_colour_manual(name = 'Model: ', 
-                      values =c('black'='black','red'='red'), 
-                      labels = c('Functional Linear Model', 'Functional Neural Network')) +
-  theme(legend.background = element_rect(fill="lightblue",
-                                         size=0.5, linetype="solid", 
-                                         colour ="darkblue"),
-        legend.position = "bottom",
-        legend.title = element_text(size = 14),
-        legend.text = element_text(size = 12))
-
-
-beta_coef_fnn %>% 
-  ggplot(aes(x = time, y = beta_evals, color = "red")) +
-  geom_line(size = 1.5) +
-  geom_line(data = beta_coef_lm, 
-            aes(x = time, y = beta_evals, color = "black"),
-            size = 1.2,
-            linetype = "dashed") + 
-  theme_bw() +
-  xlab("Transformed Wavelength") +
-  ylab("beta(w)") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  theme(axis.text=element_text(size=14, face = "bold"),
-        axis.title=element_text(size=14,face="bold")) +
-  scale_colour_manual(name = 'Model: ', 
-                      values =c('black'='black','red'='red'), 
-                      labels = c('Functional Linear Model', 'Functional Neural Network')) +
-  theme(legend.title = element_text(size = 14),
-        legend.text = element_text(size = 12),
-        legend.position = "None")
+# # Setting up data set
+# beta_coef_fnn <- data.frame(time = timepts, 
+#                             beta_evals = final_beta_fourier(timepts, scale(colMeans(func_weights)), range = c(min(timepts), max(timepts))))
+# 
+# #### Putting Together #####
+# beta_coef_fnn %>% 
+#   ggplot(aes(x = time, y = -beta_evals, color = "red")) +
+#   geom_line(size = 1.5) +
+#   geom_line(data = beta_coef_lm, 
+#             aes(x = time, y = beta_evals, color = "black"),
+#             size = 1.2,
+#             linetype = "dashed") + 
+#   theme_bw() +
+#   xlab("Time") +
+#   ylab("beta(t)") +
+#   theme(plot.title = element_text(hjust = 0.5)) +
+#   theme(axis.text=element_text(size=14, face = "bold"),
+#         axis.title=element_text(size=14,face="bold")) +
+#   scale_colour_manual(name = 'Model: ', 
+#                       values =c('black'='black','red'='red'), 
+#                       labels = c('Functional Linear Model', 'Functional Neural Network')) +
+#   theme(legend.background = element_rect(fill="lightblue",
+#                                          size=0.5, linetype="solid", 
+#                                          colour ="darkblue"),
+#         legend.position = "bottom",
+#         legend.title = element_text(size = 14),
+#         legend.text = element_text(size = 12))
+# 
+# 
+# beta_coef_fnn %>% 
+#   ggplot(aes(x = time, y = beta_evals, color = "red")) +
+#   geom_line(size = 1.5) +
+#   geom_line(data = beta_coef_lm, 
+#             aes(x = time, y = beta_evals, color = "black"),
+#             size = 1.2,
+#             linetype = "dashed") + 
+#   theme_bw() +
+#   xlab("Transformed Wavelength") +
+#   ylab("beta(w)") +
+#   theme(plot.title = element_text(hjust = 0.5)) +
+#   theme(axis.text=element_text(size=14, face = "bold"),
+#         axis.title=element_text(size=14,face="bold")) +
+#   scale_colour_manual(name = 'Model: ', 
+#                       values =c('black'='black','red'='red'), 
+#                       labels = c('Functional Linear Model', 'Functional Neural Network')) +
+#   theme(legend.title = element_text(size = 14),
+#         legend.text = element_text(size = 12),
+#         legend.position = "None")

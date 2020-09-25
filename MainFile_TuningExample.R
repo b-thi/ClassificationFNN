@@ -183,7 +183,7 @@ model_fnn %>% compile(
 )
 
 # Running model tuning
-runs = tuning_run('tuning_run_file.R', 
+runs = tuning_run('TrainingFile_TuningExample.R', 
                   runs_dir = '_tuning_example', 
                   sample = 0.005, 
                   flags = par)

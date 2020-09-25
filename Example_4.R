@@ -536,60 +536,60 @@ Final_Table
 # coefficients_fnn = rowMeans(get_weights(fnn_final$model)[[1]])[1:29]
 # 
 # Setting up data set
-beta_coef_fnn1 <- data.frame(time = timepts,
-                            beta_evals = final_beta_fourier(timepts, scale(colMeans(func_weights1)), range = c(min(timepts), max(timepts))))
-
-beta_coef_fnn2 <- data.frame(time = timepts,
-                             beta_evals = final_beta_fourier(timepts, scale(colMeans(func_weights2)), range = c(min(timepts), max(timepts))))
-
-beta_coef_fnn3 <- data.frame(time = timepts,
-                             beta_evals = final_beta_fourier(timepts, scale(colMeans(func_weights3)), range = c(min(timepts), max(timepts))))
-
-
+# beta_coef_fnn1 <- data.frame(time = timepts,
+#                             beta_evals = final_beta_fourier(timepts, scale(colMeans(func_weights1)), range = c(min(timepts), max(timepts))))
 # 
-# #### Putting Together #####
-# beta_coef_fnn %>% 
-#   ggplot(aes(x = time, y = -beta_evals, color = "red")) +
+# beta_coef_fnn2 <- data.frame(time = timepts,
+#                              beta_evals = final_beta_fourier(timepts, scale(colMeans(func_weights2)), range = c(min(timepts), max(timepts))))
+# 
+# beta_coef_fnn3 <- data.frame(time = timepts,
+#                              beta_evals = final_beta_fourier(timepts, scale(colMeans(func_weights3)), range = c(min(timepts), max(timepts))))
+# 
+# 
+# # 
+# # #### Putting Together #####
+# # beta_coef_fnn %>% 
+# #   ggplot(aes(x = time, y = -beta_evals, color = "red")) +
+# #   geom_line(size = 1.5) +
+# #   geom_line(data = beta_coef_lm, 
+# #             aes(x = time, y = beta_evals, color = "black"),
+# #             size = 1.2,
+# #             linetype = "dashed") + 
+# #   theme_bw() +
+# #   xlab("Time") +
+# #   ylab("beta(t)") +
+# #   theme(plot.title = element_text(hjust = 0.5)) +
+# #   theme(axis.text=element_text(size=14, face = "bold"),
+# #         axis.title=element_text(size=14,face="bold")) +
+# #   scale_colour_manual(name = 'Model: ', 
+# #                       values =c('black'='black','red'='red'), 
+# #                       labels = c('Functional Linear Model', 'Functional Neural Network')) +
+# #   theme(legend.background = element_rect(fill="lightblue",
+# #                                          size=0.5, linetype="solid", 
+# #                                          colour ="darkblue"),
+# #         legend.position = "bottom",
+# #         legend.title = element_text(size = 14),
+# #         legend.text = element_text(size = 12))
+# # 
+# # 
+# beta_coef_fnn1 %>%
+#   ggplot(aes(x = time, y = beta_evals, color = "blue")) +
 #   geom_line(size = 1.5) +
-#   geom_line(data = beta_coef_lm, 
-#             aes(x = time, y = beta_evals, color = "black"),
-#             size = 1.2,
-#             linetype = "dashed") + 
+#   geom_line(data = beta_coef_fnn2,
+#             aes(x = time, y = beta_evals, color = "green"),
+#             size = 1.2) +
+#   geom_line(data = beta_coef_fnn3,
+#             aes(x = time, y = beta_evals, color = "red"),
+#             size = 1.2) +
 #   theme_bw() +
-#   xlab("Time") +
-#   ylab("beta(t)") +
+#   xlab("Frequency") +
+#   ylab("beta(f)") +
 #   theme(plot.title = element_text(hjust = 0.5)) +
 #   theme(axis.text=element_text(size=14, face = "bold"),
 #         axis.title=element_text(size=14,face="bold")) +
-#   scale_colour_manual(name = 'Model: ', 
-#                       values =c('black'='black','red'='red'), 
-#                       labels = c('Functional Linear Model', 'Functional Neural Network')) +
-#   theme(legend.background = element_rect(fill="lightblue",
-#                                          size=0.5, linetype="solid", 
-#                                          colour ="darkblue"),
-#         legend.position = "bottom",
-#         legend.title = element_text(size = 14),
-#         legend.text = element_text(size = 12))
-# 
-# 
-beta_coef_fnn1 %>%
-  ggplot(aes(x = time, y = beta_evals, color = "blue")) +
-  geom_line(size = 1.5) +
-  geom_line(data = beta_coef_fnn2,
-            aes(x = time, y = beta_evals, color = "green"),
-            size = 1.2) +
-  geom_line(data = beta_coef_fnn3,
-            aes(x = time, y = beta_evals, color = "red"),
-            size = 1.2) +
-  theme_bw() +
-  xlab("Frequency") +
-  ylab("beta(f)") +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  theme(axis.text=element_text(size=14, face = "bold"),
-        axis.title=element_text(size=14,face="bold")) +
-  scale_colour_manual(name = 'Model: ',
-                      values =c('blue'='blue','red'='red', 'green' = 'green'),
-                      labels = c('Functional Observation', 'First Derivative', 'Second Derivative')) +
-  theme(legend.title = element_text(size = 14),
-        legend.text = element_text(size = 12),
-        legend.position = "bottom")
+#   scale_colour_manual(name = 'Model: ',
+#                       values =c('blue'='blue','red'='red', 'green' = 'green'),
+#                       labels = c('Functional Observation', 'First Derivative', 'Second Derivative')) +
+#   theme(legend.title = element_text(size = 14),
+#         legend.text = element_text(size = 12),
+#         legend.position = "bottom")
